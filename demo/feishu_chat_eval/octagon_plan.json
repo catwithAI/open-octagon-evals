@@ -1,0 +1,93 @@
+{
+  "eval": {
+    "schema_version": 1,
+    "scenario_id": "feishu-chat-eval-plan",
+    "scenario_version": 2,
+    "plan": {
+      "version": 2,
+      "dimensions": [
+        {
+          "id": "evaluation_design_coverage",
+          "version": 2,
+          "role": "scored",
+          "weight": 0.8,
+          "method": "agent_judge",
+          "scorer_version": "agent-judge-structured-v2",
+          "question": "Judge each anchor independently. A pass requires the candidate output itself to contain the concrete fact or procedure described by pass_if. A promise to clarify, record, or specify it later is a fail.",
+          "anchors": [
+            {
+              "id": "frozen_standard",
+              "pass_if": "Names the rubric or scoring standard, the score mapping/threshold, and a version or immutable revision.",
+              "fail_if": "Only says to fix or record the rubric later without naming the scoring rule and version."
+            },
+            {
+              "id": "agent_identity",
+              "pass_if": "Names the concrete agent implementation/version being evaluated and the concrete model/version used by that agent.",
+              "fail_if": "Only says to report the agent/model, or gives a role such as 'the tested agent' without identifiers."
+            },
+            {
+              "id": "judge_identity",
+              "pass_if": "Names the concrete judge model and, when relevant, its prompt/harness version or endpoint configuration.",
+              "fail_if": "Only says to report the judge model without naming one."
+            },
+            {
+              "id": "gold_alignment",
+              "pass_if": "Explains how the rubric decision maps to the gold label, including the binary threshold or label conversion rule.",
+              "fail_if": "Only says that rubric and gold should be aligned or recorded."
+            },
+            {
+              "id": "repeatability",
+              "pass_if": "Specifies repeated evaluations of the same artifact with a repeat count or protocol and names the stability statistics to report.",
+              "fail_if": "Only says to repeat runs without a protocol or stability metric."
+            }
+          ],
+          "output_schema": {
+            "type": "object",
+            "required": ["value", "reason", "raw"],
+            "value_enum": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            "raw_required": ["checks"],
+            "check_values": ["pass", "fail"]
+          }
+        },
+        {
+          "id": "actionability",
+          "version": 2,
+          "role": "scored",
+          "weight": 0.2,
+          "method": "agent_judge",
+          "scorer_version": "agent-judge-structured-v2",
+          "question": "Judge each anchor independently. A pass requires a concrete executable instruction in the candidate output, not a statement that the item should be considered later.",
+          "anchors": [
+            {
+              "id": "pilot_sample_protocol",
+              "pass_if": "States how the 20-sample pilot is labeled and gives a concrete sample expansion or minimum-size action.",
+              "fail_if": "Only says the sample is small or should be expanded."
+            },
+            {
+              "id": "decision_threshold",
+              "pass_if": "States the exact decision threshold or mapping, such as score > 0.5 becomes binary pass.",
+              "fail_if": "Uses vague language such as 'apply a threshold' without the value or mapping."
+            },
+            {
+              "id": "reported_metrics",
+              "pass_if": "Names the metrics to calculate and report, including accuracy and a repeatability statistic such as standard deviation or variance.",
+              "fail_if": "Only says to compare results without naming metrics."
+            },
+            {
+              "id": "execution_sequence",
+              "pass_if": "Provides an ordered next step for running versions and comparing them, including what is held constant.",
+              "fail_if": "Only says there should be a next step or comparison."
+            }
+          ],
+          "output_schema": {
+            "type": "object",
+            "required": ["value", "reason", "raw"],
+            "value_enum": [0.0, 0.25, 0.5, 0.75, 1.0],
+            "raw_required": ["checks"],
+            "check_values": ["pass", "fail"]
+          }
+        }
+      ]
+    }
+  }
+}

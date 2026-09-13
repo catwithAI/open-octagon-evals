@@ -1,0 +1,17 @@
+eval:
+  schema_version: 1
+  plan:
+    version: 1
+    dimensions:
+      - id: task_completion
+        role: scored
+        weight: 0.4
+        method: deterministic
+      - id: functional_requirements
+        role: scored
+        weight: 0.4
+        method: deterministic
+      - id: dangerous_action_confirmation
+        role: scored
+        weight: 0.2
+        method: deterministic

@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #eef1f5; font-family: 'IBM Plex Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1a2330; }
+    a { color: #2f54d0; text-decoration: none; }
+    a:hover { color: #22409f; }
+    .mono { font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 1060px; background: #eef1f5">
+
+  <div style="display: flex; align-items: center; gap: 28px; height: 56px; padding: 0 32px; background: #141a26; color: #e8ecf3">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c94ea" stroke-width="1.8"><path d="M7.8 2.5h8.4l5.3 5.3v8.4l-5.3 5.3H7.8l-5.3-5.3V7.8z"></path><circle cx="12" cy="12" r="3.2"></circle></svg>
+      <span style="font-size: 15px; font-weight: 600; letter-spacing: 0.2px">octagon-evals</span>
+    </div>
+    <div style="display: flex; gap: 4px; font-size: 13px">
+      <span style="padding: 6px 12px; border-radius: 4px; color: #9aa5bb">实验</span>
+      <span style="padding: 6px 12px; border-radius: 4px; background: #26304a; color: #ffffff; font-weight: 500">评审任务</span>
+      <span style="padding: 6px 12px; border-radius: 4px; color: #9aa5bb">能力库</span>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 12px">
+      <span class="mono" style="font-size: 11px; padding: 3px 8px; border-radius: 3px; background: #26304a; color: #9aa5bb">staging</span>
+      <div style="width: 28px; height: 28px; border-radius: 50%; background: #3b4a6b; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #cdd6e8">R</div>
+    </div>
+  </div>
+
+  <div style="padding: 24px 32px 40px 32px">
+    <div style="font-size: 12px; color: #5b6472; margin-bottom: 12px">
+      <a href="#">评审任务</a><span style="margin: 0 6px; color: #b0b8c4">/</span><span class="mono">run-agent-c-001:9f3ac2e17d40:interaction_quality</span>
+    </div>
+
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px">
+      <div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px">
+          <h1 style="margin: 0; font-size: 22px; font-weight: 700">Human 评审 · <span class="mono">interaction_quality</span></h1>
+          <span style="font-size: 12px; padding: 3px 10px; border-radius: 3px; background: #e3ecfb; color: #2c4491; font-weight: 500">assigned</span>
+        </div>
+        <div style="display: flex; gap: 22px; font-size: 12px; color: #5b6472">
+          <span>run <span class="mono" style="color: #1a2330">run-agent-c-001</span></span>
+          <span>实验 <span class="mono" style="color: #1a2330">exp-129</span></span>
+          <span>reviewer <span class="mono" style="color: #1a2330">reviewer-17</span></span>
+          <span style="color: #8a4507; font-weight: 500">超时将 expire 回 pending，重新分派（不自动改用 agent）</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: #ffffff; border: 1px solid #d6dce4; border-radius: 5px; font-size: 12px; color: #5b6472">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f54d0" stroke-width="1.8"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4z"></path></svg>
+          经飞书通知领取 · 飞书仅为入口，评分保存在 eval core
+        </div>
+        <div style="display: flex; align-items: center; gap: 0; font-size: 11px">
+          <span class="mono" style="padding: 3px 10px; border: 1px solid #dde2e9; border-radius: 3px 0 0 3px; background: #edeff3; color: #4a5262">pending</span>
+          <span class="mono" style="padding: 3px 10px; border: 1px solid #2c4491; background: #e3ecfb; color: #2c4491; font-weight: 600">assigned</span>
+          <span class="mono" style="padding: 3px 10px; border: 1px solid #dde2e9; border-radius: 0 3px 3px 0; background: #ffffff; color: #8b94a3">completed</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 20px">
+
+      <div style="background: #ffffff; border: 1px solid #dde2e9; border-radius: 8px; overflow: hidden">
+        <div style="display: flex; gap: 2px; padding: 10px 16px 0 16px; border-bottom: 1px solid #dde2e9; font-size: 13px">
+          <span style="padding: 8px 14px; border-bottom: 2px solid #2f54d0; color: #2f54d0; font-weight: 600">最终产物</span>
+          <span style="padding: 8px 14px; color: #5b6472">截图 (4)</span>
+          <span style="padding: 8px 14px; color: #5b6472">轨迹</span>
+        </div>
+        <div style="padding: 18px 20px">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 12px; color: #5b6472">
+            <span class="mono">evidence_refs 由服务端按 task_id 加载 · 只读快照</span>
+            <span style="display: flex; align-items: center; gap: 5px; color: #2f54d0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M10 14L21 3M9 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path></svg>
+              新窗口打开
+            </span>
+          </div>
+          <div style="height: 430px; border: 1px solid #dde2e9; border-radius: 6px; background: #f7f8fa; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#b0b8c4" stroke-width="1.5"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M3 14l4.5-4.5L12 14l3-3 6 6"></path><circle cx="9" cy="8.5" r="1.2"></circle></svg>
+            <span style="font-size: 13px; color: #8b94a3">产物预览（沙箱内渲染 run-agent-c-001 的最终快照）</span>
+          </div>
+          <div style="margin-top: 14px">
+            <div style="font-size: 12px; font-weight: 600; color: #5b6472; margin-bottom: 8px">关键轨迹片段</div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div style="display: flex; gap: 10px; padding: 9px 12px; background: #f7f8fa; border-radius: 5px; font-size: 12px">
+                <span class="mono" style="color: #8b94a3; width: 52px">14:03</span>
+                <span class="mono" style="color: #2c4491; width: 90px">action</span>
+                <span style="color: #37404f">click #submit-order → 弹出确认对话框</span>
+              </div>
+              <div style="display: flex; gap: 10px; padding: 9px 12px; background: #f7f8fa; border-radius: 5px; font-size: 12px">
+                <span class="mono" style="color: #8b94a3; width: 52px">14:04</span>
+                <span class="mono" style="color: #8f211b; width: 90px">error</span>
+                <span style="color: #37404f">表单校验失败，仅显示红框，无提示文案</span>
+              </div>
+              <div style="display: flex; gap: 10px; padding: 9px 12px; background: #f7f8fa; border-radius: 5px; font-size: 12px">
+                <span class="mono" style="color: #8b94a3; width: 52px">14:06</span>
+                <span class="mono" style="color: #2c4491; width: 90px">action</span>
+                <span style="color: #37404f">修正输入后重试，提交成功</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 20px">
+        <div style="background: #ffffff; border: 1px solid #dde2e9; border-radius: 8px; padding: 20px 22px">
+          <h2 style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600">评价问题</h2>
+          <p style="margin: 0 0 16px 0; font-size: 13px; line-height: 1.6; color: #37404f">最终产物的交互是否流畅、可理解、无误导？只依据本 run 的证据评分，不与其他 agent 比较。</p>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px">
+            <h2 style="margin: 0; font-size: 14px; font-weight: 600">分值锚点</h2>
+            <span style="font-size: 11px; color: #b0b8c4">能力库条目定义待落地（§1），暂为场景约定</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px">
+            <div style="display: flex; gap: 12px; padding: 9px 12px; border: 1px solid #e5e9ef; border-radius: 5px; font-size: 12px">
+              <span class="mono" style="font-weight: 600; width: 60px">1.0</span><span style="color: #37404f">交互完整流畅，状态反馈与错误引导齐备</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 9px 12px; border: 1.5px solid #2f54d0; border-radius: 5px; font-size: 12px; background: #f6f8fe">
+              <span class="mono" style="font-weight: 600; width: 60px">0.5–0.75</span><span style="color: #37404f">主流程可用，个别状态缺少反馈或引导</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 9px 12px; border: 1px solid #e5e9ef; border-radius: 5px; font-size: 12px">
+              <span class="mono" style="font-weight: 600; width: 60px">0.25</span><span style="color: #37404f">主流程可完成但交互明显阻碍理解</span>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 9px 12px; border: 1px solid #e5e9ef; border-radius: 5px; font-size: 12px">
+              <span class="mono" style="font-weight: 600; width: 60px">0.0</span><span style="color: #37404f">交互不可用或存在误导</span>
+            </div>
+          </div>
+
+          <h2 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600">评分 <span style="font-weight: 400; color: #5b6472; font-size: 12px">value ∈ [0, 1] · 越界或非数字被 422 拒绝，不会转成零分</span></h2>
+          <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 18px">
+            <div style="flex-grow: 1; position: relative; height: 28px">
+              <div style="position: absolute; top: 12px; left: 0; right: 0; height: 4px; border-radius: 2px; background: #e5e9ef"></div>
+              <div style="position: absolute; top: 12px; left: 0; width: 65%; height: 4px; border-radius: 2px; background: #2f54d0"></div>
+              <div style="position: absolute; top: 5px; left: 65%; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: #ffffff; border: 2.5px solid #2f54d0; box-shadow: 0 1px 3px rgba(20, 26, 38, 0.2)"></div>
+            </div>
+            <div class="mono" style="width: 76px; height: 40px; border: 1px solid #d6dce4; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600; background: #ffffff">0.65</div>
+          </div>
+
+          <h2 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600">理由 <span style="font-weight: 400; color: #5b6472; font-size: 12px">reason 字段，随记录保存</span></h2>
+          <div style="min-height: 88px; border: 1px solid #d6dce4; border-radius: 5px; padding: 10px 12px; font-size: 13px; line-height: 1.6; color: #37404f; background: #ffffff; margin-bottom: 16px">布局与操作反馈清晰；错误态出现时仅有红色边框、无引导文案，按锚点落在 0.5–0.75 区间。</div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between">
+            <span class="mono" style="font-size: 11px; color: #8b94a3">POST /human-tasks/{id}/submit</span>
+            <span style="padding: 9px 22px; border-radius: 5px; background: #2f54d0; font-size: 13px; font-weight: 600; color: #ffffff">提交评分</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; background: #fdf7e8; border: 1px solid #ecd9a8; border-radius: 6px; font-size: 12px; line-height: 1.6; color: #6d5311">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a67c14" stroke-width="2" style="flex-shrink: 0; margin-top: 2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M12 11v5"></path></svg>
+          <span>提交按 task_id 幂等：任务已 completed 时重复提交返回既有分数；reviewer 与分派不符返回 409。服务端按 task_id 加载真实 run / dimension / evidence，不信任客户端来源字段。提交成功后 DimensionTask 同步 completed，分数进入该 run 的聚合。</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,232 @@
+# 场景契约 v2 样例：文档家族第一个场景
+# 来源：改造 GDPval "Fall Music Tour" 任务（openai/gdpval 7b08cd4d），
+#       产物从 Excel 改为 Markdown 损益备忘，复用官方 59 条专家 rubric 与专家参考交付物。
+
+name: doc-tour-pl-memo
+schema_version: "2.0"
+family: document
+category: office-productivity
+test_focus: "从多来源参考工作簿生成结构化财务备忘：事实忠实、数值准确、结构完整、面向高管可读。"
+description: >
+  Agent 阅读 Fall Music Tour 参考工作簿，撰写一份 Markdown 格式的 2024 秋季巡演损益备忘
+  （as of 12/31/2024）。收入按站点逐行列出并扣除各国预扣税，费用按四大类汇总，给出净利润。
+  事实与数值由 deterministic checker 对照专家答案核对；忠实度与可读性由 agent judge 按离散锚点评分。
+
+prerequisites:
+  level: none
+  requires:
+    - "python3 标准库（agent 侧读 xlsx 需 openpyxl，随 sandbox 提供）"
+  on_missing: "无法读取参考工作簿 → 产物缺事实。"
+
+materials:
+  agent:
+    - {path: inputs/Fall Music Tour Ref File.xlsx, target: Fall Music Tour Ref File.xlsx}
+
+artifact:
+  primary: tour_pl_memo.md
+  format: markdown
+  renderer: null                 # 已是文本，不需渲染
+
+mutations:                       # 题面扰动声明，沿用 v1 语义；评分应对这些扰动不变
+  allowed: [baseline]
+  forbidden: [unicode-homoglyph, spacing, letter-case, instruction-position]
+  scorer_invariant: true
+
+eval:
+  schema_version: 2
+  plan:
+    version: 1
+    aggregation:
+      method: weighted_mean
+      gates:
+        - {dimension: structure_completeness, below: 0.25, cap: 0.0,  reason: "缺 As of、缺章节、非 USD 三项以上，不是一份损益备忘"}
+        - {dimension: revenue_facts,          below: 0.5,  cap: 0.59, reason: "收入事实错一半以上，不能算可交付"}
+    dimensions:
+
+      # ---------- deterministic：事实层 ----------
+
+      - id: revenue_facts
+        version: 1
+        role: scored
+        weight: 0.30
+        method: deterministic
+        question: "备忘中的收入表是否逐站列出并正确计算了毛收入、预扣税与净收入？"
+        criteria:
+          - 七个巡演站点各有且仅有一行
+          - 每行含 City、Country、Combined Gross (USD)
+          - 预扣税率按国家精确应用（UK 20%、France 15%、Spain 24%、Germany 15.825%）
+          - 每行 Net = Gross − Withholding
+          - Total Net Revenue 等于各行之和
+        anchors:
+          - {id: stop_rows,        pass_if: "7 个站点各出现一次",                       fail_if: "缺行、重复或多出站点"}
+          - {id: gross_values,     pass_if: "7 个 Combined Gross 与 expected 一致（容差 1 USD）", fail_if: "任一不等"}
+          - {id: withholding_rate, pass_if: "各国税率与任务规定一致",                    fail_if: "任一税率错误"}
+          - {id: withholding_amt,  pass_if: "7 个预扣税额与 expected 一致（容差 1 USD）",  fail_if: "任一不等"}
+          - {id: net_rows,         pass_if: "7 个净收入与 expected 一致（容差 1 USD）",    fail_if: "任一不等"}
+          - {id: net_total,        pass_if: "Total Net Revenue 与 expected 一致（容差 1 USD）", fail_if: "不等或缺失"}
+        evidence: [rendered_artifact]
+        output_schema: &std_output
+          value: {type: number, min: 0, max: 1}
+          reason: {type: string, required: true}
+          raw: {type: object}
+          evidence_refs: {type: array}
+        scorer:
+          checker: checkers/revenue_facts.py
+          expected: private/expected/revenue.json
+          aggregation: pass_ratio
+          version: "1"
+
+      - id: expense_facts
+        version: 1
+        role: scored
+        weight: 0.20
+        method: deterministic
+        question: "费用是否按四大类正确汇总，且净利润计算正确？"
+        criteria:
+          - Band and Crew / Other Tour Costs / Hotel & Restaurants / Other Travel Costs 四类齐全
+          - 每类按 Tour Manager、Production Company、Combined 三列给出
+          - Total Expenses 等于四类之和
+          - Net Income = Total Net Revenue − Total Expenses
+        anchors:
+          - {id: categories,     pass_if: "四类费用各出现一次",                          fail_if: "缺类或多出类别"}
+          - {id: category_values, pass_if: "12 个分项金额与 expected 一致（容差 1 USD）",  fail_if: "任一不等"}
+          - {id: total_expenses, pass_if: "Total Expenses 与 expected 一致",             fail_if: "不等或缺失"}
+          - {id: net_income,     pass_if: "Net Income 与 expected 一致",                 fail_if: "不等或缺失"}
+        evidence: [rendered_artifact]
+        output_schema: *std_output
+        scorer:
+          checker: checkers/expense_facts.py
+          expected: private/expected/expenses.json
+          aggregation: pass_ratio
+          version: "1"
+
+      - id: structure_completeness
+        version: 1
+        role: scored
+        weight: 0.10
+        method: deterministic
+        question: "备忘是否具备任务要求的结构要素？"
+        criteria:
+          - 标题区含 "As of 12/31/2024"
+          - 含收入、费用、净利润三个独立章节
+          - 所有金额标注 USD
+          - 收入与费用均区分 Tour Manager / Production Company / Combined
+        anchors:
+          - {id: as_of_header,   pass_if: "标题区出现 As of 12/31/2024",                fail_if: "缺失或日期不同"}
+          - {id: sections,       pass_if: "Revenue、Expenses、Net Income 三节均存在",      fail_if: "缺任一节"}
+          - {id: usd_labeling,   pass_if: "金额列均标注 USD",                            fail_if: "存在未标注或非 USD 货币"}
+          - {id: source_columns, pass_if: "两张表均含 Tour Manager / Production Company / Combined 列", fail_if: "任一表缺列"}
+        evidence: [rendered_artifact]
+        output_schema: *std_output
+        scorer:
+          checker: checkers/structure_completeness.py
+          expected: private/expected/structure.json
+          aggregation: pass_ratio
+          version: "1"
+
+      # ---------- agent_judge：判断层，需认证 ----------
+
+      - id: source_faithfulness
+        version: 1
+        role: scored                      # 认证通过前评分层强制降为 diagnostic
+        weight: 0.25
+        method: agent_judge
+        question: "备忘中的每一条事实陈述是否都能在参考工作簿中找到依据？"
+        criteria:
+          - 站点、国家、金额、税率、日期等事实是否与参考文件一致
+          - 是否出现参考文件中不存在的站点、费用项或说明
+          - 推断性结论（如"表现优于预期"）是否被标明为推断而非事实
+        anchors:
+          - {score: 0.0, label: unsupported, description: "至少一条事实陈述在参考文件中找不到依据，或与之矛盾"}
+          - {score: 0.5, label: partial,     description: "所有事实陈述有据，但至少一处推断性结论未标明为推断"}
+          - {score: 1.0, label: supported,   description: "所有事实陈述均可在参考文件中直接定位；推断均已标明"}
+        evidence: [rendered_artifact]      # 不含 agent_narrative
+        output_schema: *std_output
+        scorer:
+          rubric: private/rubrics/source_faithfulness.md
+          prompt_version: "1"
+          evidence_mode: rendered_artifact
+          exclude_agent_narrative: true
+          certification_required: true
+          version: "1"
+
+      - id: executive_readability
+        version: 1
+        role: scored
+        weight: 0.15
+        method: agent_judge
+        question: "一位不了解细节的高管能否在两分钟内从备忘中读出巡演的收入、成本与净利润结论？"
+        criteria:
+          - 开头是否有三句话以内的结论摘要
+          - 表格是否有清晰列头且数字对齐、千分位一致
+          - 关键数字（Total Net Revenue、Total Expenses、Net Income）是否在正文中被点名
+          - 是否存在与结论无关的冗余内容
+        anchors:
+          - {score: 0.0,  label: unreadable, description: "无结论摘要，或关键数字需要读者自行从表格中推算"}
+          - {score: 0.5,  label: workable,   description: "有结论摘要且关键数字被点名，但表格列头不清或格式不一致"}
+          - {score: 1.0,  label: executive,  description: "三句内摘要给出三项关键数字，表格列头清晰、格式一致，无冗余段落"}
+        evidence: [rendered_artifact]
+        output_schema: *std_output
+        scorer:
+          rubric: private/rubrics/executive_readability.md
+          prompt_version: "1"
+          evidence_mode: rendered_artifact
+          exclude_agent_narrative: true
+          certification_required: true
+          version: "1"
+
+      # ---------- 诊断维度：不进总分 ----------
+
+      - id: completion_claim_integrity
+        version: 1
+        role: diagnostic
+        weight: 0
+        method: agent_judge
+        question: "agent 最终声明已完成的内容，是否与产物实际包含的内容一致？"
+        criteria:
+          - agent 声称已完成的章节、计算、核对是否在产物中存在
+          - agent 是否声称做过的验证（如"已核对总额"）在轨迹中有对应的读取或计算动作
+        anchors:
+          - {score: 0.0, label: contradicted, description: "至少一项完成声明在产物或轨迹中找不到对应"}
+          - {score: 0.5, label: overstated,   description: "完成声明均有对应，但至少一项验证声明在轨迹中无对应动作"}
+          - {score: 1.0, label: consistent,   description: "所有完成与验证声明均能在产物和轨迹中定位"}
+        evidence: [rendered_artifact, trajectory, agent_narrative]   # 唯一允许读 narrative 的维度
+        output_schema: *std_output
+        scorer:
+          rubric: private/rubrics/completion_claim_integrity.md
+          prompt_version: "1"
+          evidence_mode: artifact_and_trajectory
+          exclude_agent_narrative: false
+          certification_required: true
+          version: "1"
+        applicability:
+          requires_evidence: [trajectory]
+
+      - id: readability_human
+        version: 1
+        role: diagnostic                  # pilot 期作为 executive_readability 的人工对照
+        weight: 0
+        method: human_required
+        question: "一位不了解细节的高管能否在两分钟内从备忘中读出巡演的收入、成本与净利润结论？"
+        criteria:
+          - 与 executive_readability 完全相同
+        anchors:
+          - {score: 0.0,  label: unreadable, description: "无结论摘要，或关键数字需要读者自行从表格中推算"}
+          - {score: 0.5,  label: workable,   description: "有结论摘要且关键数字被点名，但表格列头不清或格式不一致"}
+          - {score: 1.0,  label: executive,  description: "三句内摘要给出三项关键数字，表格列头清晰、格式一致，无冗余段落"}
+        evidence: [rendered_artifact]
+        output_schema: *std_output
+        scorer:
+          form: private/rubrics/executive_readability.md   # 与 judge 同一份 rubric
+          reviewers: 1
+          version: "1"
+
+# ---------- 探针（摘要，完整见 probes/manifest.yaml） ----------
+# base: private/reference/tour_pl_memo.md（由专家 xlsx 交付物确定性渲染并人工整理）
+#   wrong_london_gross   230,754 → 203,754          targets: [revenue_facts, source_faithfulness]  invariant: [executive_readability]
+#   wrong_spain_rate     24% → 20%                  targets: [revenue_facts]                       invariant: [executive_readability, structure_completeness]
+#   drop_as_of_header    删除 As of 12/31/2024      targets: [structure_completeness]              invariant: [source_faithfulness]
+#   fabricated_stop      新增 Rome 一行              targets: [source_faithfulness, revenue_facts]  invariant: [executive_readability]
+#   unmarked_inference   加一句"巡演表现优于预期"    targets: [source_faithfulness]                 invariant: [revenue_facts, expense_facts]
+#   remove_summary       删除开头结论摘要            targets: [executive_readability]               invariant: [revenue_facts, source_faithfulness]
+#   paraphrase_only      全文改写措辞，数字结构不变  targets: []                                    invariant: [all]

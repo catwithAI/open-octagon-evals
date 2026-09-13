@@ -1,0 +1,3 @@
+{
+  "feishu_eval_plan_20260831": "先把这 20 条 HealthBench 结果标记为 pilot，不能把 65% 当成 AgentEval 整体结论。正式比较前固定 rubric、gold 和二元判定口径，并记录 rubric 版本。报告中明确被测 agent 和模型、judge 模型、数据集与 gold 的对齐方式。对同一个产物重复评估，记录准确率、标准差和方差，再比较不同版本的平均分与稳定性。下一步先扩充样本和 case，固定 score>0.5 的阈值，分别运行 agent+skill+model 版本，最后输出 accuracy、标准差和逐 case 差异。"
+}

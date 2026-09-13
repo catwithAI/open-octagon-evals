@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "case_id": "evaluation_plan_demo",
+    "task": "Write an executable evaluation plan from a short team discussion.",
+    "expected": {"requirements": ["fixed rubric", "agent and model identity", "judge model", "gold alignment", "repeatability"]},
+    "context": {"source": "synthetic discussion", "messages": [
+      {"speaker": "reviewer", "text": "Please state the rubric, systems under test, judge, gold alignment, and repeat protocol."},
+      {"speaker": "author", "text": "We need more samples and an explicit threshold before drawing conclusions."}
+    }
+  }]
+}

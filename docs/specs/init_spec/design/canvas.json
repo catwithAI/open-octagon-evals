@@ -1,0 +1,15 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "实验列表", "x": 0, "y": 0, "w": 1440, "h": 920 },
+    { "file": "ExperimentDetail.dc.html", "title": "实验详情 · AgentRun 对比", "x": 1560, "y": 0, "w": 1440, "h": 1180 },
+    { "file": "DimensionDetail.dc.html", "title": "维度评分详情", "x": 0, "y": 1340, "w": 1440, "h": 1130 },
+    { "file": "HumanReview.dc.html", "title": "Human 评审任务", "x": 1560, "y": 1340, "w": 1440, "h": 1080 }
+  ],
+  "annotations": [
+    { "id": "flow-note", "x": 0, "y": -170, "w": 460, "text": "octagon-evals 评分台 · 概念图 v2（对齐当前后端接口）\n浏览路径：实验列表 → 实验详情（runs{} 对比）→ 维度评分详情（scores[] 血统）\nHuman 评审页为 reviewer 视角；虚线/灰色元素 = 后端待实现（agent_judge、矩阵端点、lineage 补全）。" },
+    { "id": "api-main", "x": 1480, "y": 60, "w": 240, "text": "GET /experiments\nGET /experiments/{id}/score\n→ runs{run_id: {status, total_score}}" },
+    { "id": "api-task", "x": 1480, "y": 1400, "w": 240, "text": "GET /tasks/{task_id}\n→ state · attempts · scores[]（append-only，唯一 resolved）" },
+    { "id": "api-human", "x": 3080, "y": 1400, "w": 250, "text": "POST /human-tasks/{id}\nPOST /human-tasks/{id}/assign\nPOST /human-tasks/{id}/submit（幂等）\nPOST /human-tasks/{id}/expire\n状态：pending → assigned → completed" }
+  ],
+  "launch": { "view": "canvas" }
+}
