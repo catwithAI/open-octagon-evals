@@ -33,3 +33,35 @@ def test_agent_judge_prompt_contains_structured_anchors_and_schema():
     user = json.loads(request["messages"][1]["content"])
     assert user["anchors"][0]["id"] == "agent"
     assert user["output_schema"]["required"] == ["value", "reason", "raw"]
+
+
+class RawResponse:
+    """Opener that returns judge content verbatim (not re-encoded as JSON)."""
+    def __init__(self, content): self.content = content
+    def __enter__(self): return self
+    def __exit__(self, *a): pass
+    def read(self):
+        return json.dumps({"choices": [{"message": {"content": self.content}}]}).encode()
+
+
+@pytest.mark.parametrize("content", [
+    '{"value": 0.5, "reason": "plain json", "raw": {}}',
+    '```json\n{"value": 0.5, "reason": "fenced", "raw": {}}\n```',
+    '```\n{"value": 0.5, "reason": "bare fence", "raw": {}}\n```',
+    'Here is my verdict:\n{"value": 0.5, "reason": "prose first", "raw": {}}',
+])
+def test_agent_judge_accepts_common_json_wrappers(content):
+    """Chat models fence their JSON or prefix it with prose even when told not to.
+
+    Before this, any of these came back as `Expecting value: line 1 column 1`
+    and surfaced as a 422 — indistinguishable from a malformed request.
+    """
+    judge = AgentJudge(AgentJudgeConfig(), lambda req: RawResponse(content))
+    assert judge.score("t-wrap-" + content[:12], {}, "quality").value == 0.5
+
+
+def test_agent_judge_rejects_unparseable_output_instead_of_guessing():
+    from octagon_evals.errors import InvalidJudgeOutput
+    judge = AgentJudge(AgentJudgeConfig(), lambda req: RawResponse("I cannot score this."))
+    with pytest.raises(InvalidJudgeOutput):
+        judge.score("t-prose", {}, "quality")
