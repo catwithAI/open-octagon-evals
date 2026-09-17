@@ -11,7 +11,7 @@ def validate_plan(plan: EvalPlan, capabilities: set[str] | None = None) -> EvalP
         if not d.id or d.id in ids: raise PlanError(f"duplicate/empty dimension: {d.id}")
         ids.add(d.id)
         if capabilities is not None and d.id not in capabilities: raise PlanError(f"unknown dimension: {d.id}")
-        if d.role not in ("scored", "diagnostic") or d.method not in ("deterministic", "agent_judge", "human_required"):
+        if d.role not in ("scored", "diagnostic") or d.method not in ("deterministic", "agent_judge", "agent_judge_agentic", "human_required"):
             raise PlanError(f"invalid role or method for {d.id}")
         if not isinstance(d.weight, (int, float)) or isinstance(d.weight, bool) or not math.isfinite(d.weight) or d.weight < 0:
             raise PlanError(f"invalid weight for {d.id}")

@@ -6,7 +6,7 @@
 2. **实验结构**：一个 Experiment 包含 N 个 agent 分别运行同一个 task。
 3. **Plan 时机**：EvalPlan 在 agent 执行前确定并冻结。
 4. **Plan 来源**：MVP 由场景固定定义，不使用 AI planner 动态选择。
-5. **Agent judge**：MVP 使用 `pi + stealth/ox-alpha`，每个维度单次调用。
+5. **Judge 路径**：`agent_judge` 保留 OpenAI-compatible 单次 LLM 调用；`agent_judge_agentic` 通过独立 HTTP 服务驱动 pi，以 `read,bash` 工具读取临时工作区证据。provider/model 可配置，默认沿用 pi 当前默认。每个维度只调用一次。
 6. **Human 路径**：只处理场景预先声明的 `human_required` 维度；不做 agent 低置信度升级；每个 task 一个 reviewer。
 7. **聚合**：scored 维度直接加权平均；diagnostic 不进总分；所有计分维度完成前总分待定。
 8. **来源**：平台不主动向评分者提供 producer agent 来源，但不承诺评分者无法推测来源。

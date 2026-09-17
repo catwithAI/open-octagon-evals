@@ -4,7 +4,7 @@ from typing import Any, Literal
 import math
 
 Role = Literal["scored", "diagnostic"]
-Method = Literal["deterministic", "agent_judge", "human_required"]
+Method = Literal["deterministic", "agent_judge", "agent_judge_agentic", "human_required"]
 
 def _value(value: float) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
