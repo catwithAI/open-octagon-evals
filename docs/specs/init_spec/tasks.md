@@ -107,7 +107,7 @@ MVP 主链路（模型 → plan 校验 → 任务队列 → deterministic 评分
 实现任务：
 
 - [x] 通过 dimension method 路由到 deterministic checker、单次 agent judge 或 human task。
-- [ ] agent judge 固定使用 `pi + stealth/ox-alpha` 配置，每个维度只调用一次；confidence 只
+- [x] `agent_judge_agentic` 通过独立 HTTP 服务驱动 pi，provider/model 可配置，默认沿用 pi 当前默认；每个维度只调用一次；confidence 只
   作为诊断字段，不触发 human 升级。
 - [x] 校验 judge/human 的结构化输出；invalid output 进入 invalid-output/eval-failed 流程，
   不猜分、不补零。

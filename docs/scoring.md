@@ -50,9 +50,10 @@ eval:
 ## 评分方法
 
 ```text
-deterministic  → checker
-agent_judge    → pi + stealth/ox-alpha，单次调用
-human_required → 一个匹配 reviewer 的 human task
+deterministic          → checker
+agent_judge            → OpenAI-compatible 单次 LLM 调用
+agent_judge_agentic    → 独立 pi Judge 服务，使用工具检索证据
+human_required         → 一个匹配 reviewer 的 human task
 ```
 
 MVP 不做 agent judge 低置信度升级 human。confidence 如果保留，只是诊断字段，不参与路由。

@@ -21,7 +21,7 @@
 | **DimensionScore（维度分）** | 一个 DimensionTask 的评分结果及其血统。 | 含 `proposal / reviews / resolved` 三层，互不覆盖；`value ∈ [0,1]`，同时保留 raw、reason、evidence refs。 |
 | **Total Score（总分）** | 所有 scored 维度按权重平均的派生值。 | 任一 scored 维度未 resolved 时为 `null`，显示待定。不隐式补零，不临时重归一化。 |
 | **Role（维度角色）** | 维度对总分的参与方式。 | **[MVP]** `scored` 进总分；`diagnostic` 只记录。`core / observation` **[延期]**。 |
-| **Method（评分方法）** | 由谁给出维度分。 | `deterministic`（checker）、`agent_judge`（LLM judge，每维度单次调用）、`human_required`（一个 reviewer）。 |
+| **Method（评分方法）** | 由谁给出维度分。 | `deterministic`（checker）、`agent_judge`（单次 LLM judge）、`agent_judge_agentic`（pi 工具型 judge）、`human_required`（一个 reviewer）。 |
 | **Lineage（血统）** | 一条分数产生时所依赖的全部版本信息。 | scenario、plan、dimension、scorer、prompt、model、evidence hash、reviewer。任何变化都新建记录，不原地覆盖。 |
 | **Legacy（旧链路结果）** | 拆分前各 env 自带 `scorer.py` 产出的分数。 | 标记为 `legacy`，不与新 pipeline 结果静默混排。 |
 
@@ -64,7 +64,7 @@
 |---|---|---|
 | **Deterministic Checker（确定性检查器）** | 程序化断言，如测试通过、文件存在、字段匹配。 | `method: deterministic`。优先级最高，能写成 checker 的不用 judge。 |
 | **LLM-as-a-Judge（LLM 评判）** | 用语言模型依据 rubric 对产物或轨迹打分。 | `method: agent_judge`，OpenAI-compatible 接口，每维度单次调用。 |
-| **Agent-as-a-Judge（Agent 评判）** | judge 自身是带工具的 agent，可主动检索证据、核对状态。 | AgentEval 的独立 Judge（PydanticAI）属于此类；本仓库通过接口调用，不实现其内部。 |
+| **Agent-as-a-Judge（Agent 评判）** | judge 自身是带工具的 agent，可主动检索证据、核对状态。 | `method: agent_judge_agentic`；本仓库通过独立 HTTP 服务驱动 pi，在临时工作区使用 `read,bash` 检索证据。 |
 | **Judge Reliability（judge 可靠性）** | 输入不变时 judge 输出的稳定程度。 | **[研究]** 指标：重复 N 次的方差、range、exact-anchor agreement。是当前最优先验证的属性。 |
 | **Judge Accuracy（judge 准确率）** | judge 与 Gold 的一致程度。 | **[研究]** 指标：binary accuracy、balanced accuracy、F1、MAE、Cohen's κ、Spearman ρ。没有 Gold 时报 `unavailable`，不伪造。 |
 | **Invariance Test（不变性测试）** | 对输入做不改变正确答案的扰动，检查 judge 是否变分。 | **[研究]** 扰动类型：改写、改格式、证据乱序、加无关内容、加长 trace、翻转标签、删除 agent 自述。不需要 Gold 即可执行。 |

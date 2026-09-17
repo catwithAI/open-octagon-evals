@@ -8,10 +8,12 @@ from .scorers.runner import ScorerRunner
 from .scorers.agent_judge import AgentJudge
 
 class EvaluationService:
-    def __init__(self, *, db=None, registry=None, judge: AgentJudge | None = None):
+    def __init__(self, *, db=None, registry=None, judge: AgentJudge | None = None,
+                 agentic_judge=None):
         self.db=db; self.tasks=TaskStore(db); self.scores=ScoreStore(db)
         self.runner=ScorerRunner(registry) if registry else None
         self.judge=judge
+        self.agentic_judge=agentic_judge
     def start(self, evaluation_input: EvaluationInput, plan: EvalPlan):
         validate_plan(plan)
         from .plan.hash import plan_hash
@@ -34,6 +36,28 @@ class EvaluationService:
         if dimension is None:
             raise ValueError(f"unknown dimension: {task.dimension_id}")
         score = self.judge.score(
+            task.id,
+            evidence,
+            dimension.question or dimension.id,
+            anchors=dimension.anchors,
+            output_schema=dimension.output_schema,
+        )
+        self.scores.record(
+            task,
+            {"value": score.value, "raw": score.raw, "reason": score.reason,
+             "evidence_refs": score.evidence_refs},
+            score.source,
+            score.lineage,
+        )
+        self.tasks.complete(task.id)
+        return score
+    def score_agent_judge_agentic(self, task, plan, evidence):
+        if self.agentic_judge is None:
+            raise RuntimeError("no agentic judge configured")
+        dimension = next((d for d in plan.dimensions if d.id == task.dimension_id), None)
+        if dimension is None:
+            raise ValueError(f"unknown dimension: {task.dimension_id}")
+        score = self.agentic_judge.score(
             task.id,
             evidence,
             dimension.question or dimension.id,

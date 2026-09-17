@@ -37,13 +37,23 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
+如果要使用 `method: agent_judge_agentic`，还需单独安装并认证 `pi` CLI（当前验证版本：`0.84.1`）：
+
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi --version
+pi  # 首次运行时使用 /login 和 /model 配置 provider/model
+```
+
+详细配置、直接调用示例和 HTTP 协议见 [`docs/pi-judge.md`](docs/pi-judge.md)。
+
 ### 启动 API 和控制台
 
 ```bash
 ./start.sh
 ```
 
-默认会启动 API（`http://127.0.0.1:8000`）、静态控制台（`http://127.0.0.1:5173`）和 SQLite 数据库（`data/octagon-evals.db`）。如果默认端口被占用，脚本会自动选择附近的空闲 API 端口，并打印实际访问地址。
+默认会启动 API（`http://127.0.0.1:8000`）、pi Judge（`http://127.0.0.1:8001`）、静态控制台（`http://127.0.0.1:5173`）和 SQLite 数据库（`data/octagon-evals.db`）。如果默认端口被占用，脚本会自动选择附近的空闲端口，并打印实际访问地址。
 
 ```bash
 OCTAGON_EVALS_PORT=8030 \
@@ -52,9 +62,14 @@ OCTAGON_EVALS_DB=./data/local.db \
 ./start.sh
 ```
 
-### 配置 agent judge
+### 配置 Judge
 
-`agent_judge` 使用 OpenAI-compatible Chat Completions 接口。不要把 key 写入仓库或提交到 Git：
+本仓库有两条 Judge 路径：
+
+- `agent_judge`：旧的单次 OpenAI-compatible Chat Completions 调用；
+- `agent_judge_agentic`：独立 pi Agent-as-a-Judge 服务，Judge 使用工具读取工作区证据。
+
+旧的 `agent_judge` 配置如下。不要把 key 写入仓库或提交到 Git：
 
 ```bash
 export OCTAGON_JUDGE_ENDPOINT="https://your-llm-endpoint/v1/chat/completions"
@@ -75,6 +90,19 @@ Judge 必须返回 JSON，且 `value` 必须是 `[0, 1]` 内的数字：
 ```
 
 每个 `(run_id, dimension_id)` 评分任务最多调用一次 Judge。
+
+pi Agent-as-a-Judge 推荐显式配置 provider/model，并保证客户端超时大于 Judge 子进程超时：
+
+```bash
+export OCTAGON_JUDGE_PROVIDER=llm3
+export OCTAGON_JUDGE_MODEL=deepseek-4-flash
+export OCTAGON_JUDGE_TIMEOUT=300
+export OCTAGON_JUDGE_CLIENT_TIMEOUT=330
+pi auth check --provider "$OCTAGON_JUDGE_PROVIDER" --model "$OCTAGON_JUDGE_MODEL" --json
+./start.sh
+```
+
+完整安装、配置、安全边界及 `POST /judge` 输入输出协议见 [`docs/pi-judge.md`](docs/pi-judge.md)。
 
 ## 执行一次评分
 
@@ -115,7 +143,7 @@ curl -sS -X POST "$API/experiments/demo-e1/runs" \
         "id": "interaction_quality",
         "role": "scored",
         "weight": 0.4,
-        "method": "agent_judge",
+        "method": "agent_judge_agentic",
         "question": "最终产物是否清晰、完整、无误导？",
         "anchors": [
           {"id": "clarity", "pass_if": "有清晰状态反馈", "fail_if": "状态不可理解"},
@@ -148,7 +176,7 @@ curl -sS -X POST "$API/tasks/$TASK_ID/score" \
   }'
 ```
 
-`deterministic` 和 `agent_judge` 都使用这个入口；`human_required` 任务会返回需要人工评审的冲突提示，不会自动改走 Judge。
+`deterministic`、`agent_judge` 和 `agent_judge_agentic` 都使用这个入口；`human_required` 任务会返回需要人工评审的冲突提示，不会自动改走 Judge。
 
 ### 3. 查看评分和实验状态
 
@@ -176,6 +204,7 @@ total_score = Σ(dimension_score × weight) / Σ(weight)
 - [`docs/decisions.md`](docs/decisions.md)：已确认的设计决策与明确延期的事项。
 - [`docs/context.md`](docs/context.md)：拆分背景、参考实现、现有链路接缝和落地路线。
 - [`docs/glossary.md`](docs/glossary.md)：术语说明表，统一评测讨论中的对象、证据、rubric、judge、Gold、benchmark 与闭环用词。
+- [`docs/pi-judge.md`](docs/pi-judge.md)：pi Agent-as-a-Judge 的安装、启动、配置、HTTP 输入输出协议、测试和安全边界。
 - [`docs/scenario-spec.md`](docs/scenario-spec.md)：场景契约 v2 草案，定义新建场景的目录、维度字段、扣分码、封顶、证据契约、探针与认证要求；样例见 [`docs/scenarios/doc-tour-pl-memo/meta.yaml`](docs/scenarios/doc-tour-pl-memo/meta.yaml)。
 - [`docs/review-representative-envs.md`](docs/review-representative-envs.md)：11 个代表场景与契约 v2 的逐项差距、迁移分档和契约需修订点。
 - [`web/`](web/)：基于 `docs/specs/init_spec/design/` 原型图的静态控制台前端。
