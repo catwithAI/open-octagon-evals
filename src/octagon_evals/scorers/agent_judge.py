@@ -1,4 +1,5 @@
 from __future__ import annotations
+import inspect
 import json, os
 from dataclasses import dataclass
 from urllib.request import Request, urlopen
@@ -11,9 +12,19 @@ class AgentJudgeConfig:
     model: str = "stealth/ox-alpha"
     api_key: str | None = None
     prompt_version: str = "1"
+    #: 单次 judge 调用的硬超时（秒）。judge 是外部 LLM，不设上限会无限阻塞
+    #: 调用线程（原实现 urlopen 无 timeout）。`/evaluate` 的整体 deadline 由
+    #: 调用方（agent-octagon 的 wait_for）控制，这里只兜住单次调用。
+    timeout: float = 300.0
     @classmethod
     def from_env(cls):
-        return cls(os.getenv("OCTAGON_JUDGE_ENDPOINT", cls.endpoint), os.getenv("OCTAGON_JUDGE_MODEL", "stealth/ox-alpha"), os.getenv("OCTAGON_JUDGE_API_KEY"), os.getenv("OCTAGON_JUDGE_PROMPT_VERSION", "1"))
+        return cls(
+            os.getenv("OCTAGON_JUDGE_ENDPOINT", cls.endpoint),
+            os.getenv("OCTAGON_JUDGE_MODEL", "stealth/ox-alpha"),
+            os.getenv("OCTAGON_JUDGE_API_KEY"),
+            os.getenv("OCTAGON_JUDGE_PROMPT_VERSION", "1"),
+            float(os.getenv("OCTAGON_JUDGE_TIMEOUT", str(cls.timeout))),
+        )
 
 _POINTWISE_SYSTEM = (
     "You are a strict evaluation judge. Return JSON only with keys "
@@ -56,6 +67,21 @@ class AgentJudge:
         self.config, self.opener = config, opener
         self.calls = 0
         self._called_tasks: set[str] = set()
+        #: 累计 usage（所有调用之和）。`/evaluate` 端点据此回传 response.usage，
+        #: 供 agent-octagon 补记 judge 成本——LLM judge 的账不在上游 run key 上，
+        #: 只能用实际用量回传归因。
+        self.usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        #: opener 是注入面：既有测试的 fake 只收 ``request``，真 urlopen 收
+        #: ``timeout``。传不传 timeout 必须与 opener 声明匹配，否则单参数
+        #: fake 会 TypeError。生产 urlopen 声明了 timeout，走带超时分支。
+        try:
+            _sig = inspect.signature(opener)
+            self._opener_accepts_timeout = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD
+                for p in _sig.parameters.values()
+            ) or "timeout" in _sig.parameters
+        except (TypeError, ValueError):
+            self._opener_accepts_timeout = True
 
     def score(self, task_id: str, evidence: dict, dimension_question: str,
               *, anchors=None, output_schema=None):
@@ -117,7 +143,16 @@ class AgentJudge:
         headers = {"Content-Type": "application/json"}
         if self.config.api_key: headers["Authorization"] = "Bearer " + self.config.api_key
         req = Request(self.config.endpoint, data=json.dumps(payload).encode(), headers=headers, method="POST")
-        with self.opener(req) as response:
-            body = json.loads(response.read())
+        if self._opener_accepts_timeout:
+            with self.opener(req, timeout=self.config.timeout) as response:
+                body = json.loads(response.read())
+        else:
+            with self.opener(req) as response:
+                body = json.loads(response.read())
+        usage = body.get("usage") or {}
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            value = usage.get(key)
+            if isinstance(value, int):
+                self.usage[key] += value
         content = body["choices"][0]["message"]["content"]
         return parse_judge_content(content) if isinstance(content, str) else content
