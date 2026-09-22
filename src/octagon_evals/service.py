@@ -38,13 +38,16 @@ class EvaluationService:
         self.scores.record(task_obj, {"value":score.value,"raw":score.raw,"reason":score.reason,"evidence_refs":score.evidence_refs}, score.source, score.lineage)
         self.tasks.complete(task.id)
         return score
-    def score_agent_judge(self, task, plan, evidence):
-        if self.judge is None:
+    def score_agent_judge(self, task, plan, evidence, *, judge=None):
+        # judge 覆盖：`/evaluate` 用请求里的 judge_config 构造临时实例传入；
+        # 不传时沿用 self.judge（流程式 API 行为不变）。
+        judge = judge if judge is not None else self.judge
+        if judge is None:
             raise RuntimeError("no agent judge configured")
         dimension = next((d for d in plan.dimensions if d.id == task.dimension_id), None)
         if dimension is None:
             raise ValueError(f"unknown dimension: {task.dimension_id}")
-        score = self.judge.score(
+        score = judge.score(
             task.id,
             evidence,
             dimension.question or dimension.id,
