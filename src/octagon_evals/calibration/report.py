@@ -48,8 +48,15 @@ def _baseline_table(rows) -> str:
 
 def _sampling_block(meta: dict[str, Any]) -> str:
     strategy = meta["strategy"]
+    eligible_note = ""
+    if meta.get("eligible_total"):
+        eligible_note = f"\n- **JEV 上下文上限**：eligible {meta['total_available']}/{meta['eligible_total']} 条进入判定（超限 case 排除，未截断）"
+    if meta.get("skipped"):
+        eligible_note += f"\n- **运行时跳过**：{meta['skipped']} 条容量/瞬时错误（重试后仍失败，未计 ACC）"
+    if strategy == "fixed":
+        return f"- 抽样策略：**固定 case 列表**（{meta['total_available']} 条进入判定）{eligible_note}"
     if strategy == "full":
-        return f"- 抽样策略：**全量**（{meta['total_available']} case，limit 超出可用量自动转全量）"
+        return f"- 抽样策略：**全量**（{meta['total_available']} case，limit 超出可用量自动转全量）{eligible_note}"
     lines = [f"- 抽样策略：**{strategy}**，limit={meta['limit']}，seed={meta['seed']}"]
     if strategy == "stratified":
         alloc = meta.get("allocation") or {}
@@ -57,6 +64,8 @@ def _sampling_block(meta: dict[str, Any]) -> str:
         lines.append(f"- 分组分配：{alloc_str}（可用 {meta['total_available']} case）")
     else:
         lines.append(f"- 随机抽取（可用 {meta['total_available']} case）")
+    if eligible_note:
+        lines.append(eligible_note.lstrip("\n"))
     return "\n".join(lines)
 
 
@@ -80,7 +89,11 @@ def render_report(*, meta: dict[str, Any], rows, wrong_cases, include_baselines:
     strategy/limit/seed/allocation/is_full/total_available/verdicts_path/
     generated_at。rows：``metrics.aggregate`` 输出。wrong_cases：错误案例记录。"""
     overall = rows[0] if rows else None
-    method = "LLM-as-judge（inline，单次调用）" if meta["backend"] == "inline" else "Agent-as-judge（agentic，pi）"
+    method = {
+        "inline": "LLM-as-judge（inline，单次调用）",
+        "agentic": "Agent-as-judge（agentic，pi）",
+        "jev": "JEV（System One，单次 pairwise）",
+    }.get(meta["backend"], meta["backend"])
     lines = [
         "# Judge 校准报告（RubricBench pairwise）",
         "",

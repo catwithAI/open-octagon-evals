@@ -4,7 +4,7 @@ from typing import Any, Literal
 import math
 
 Role = Literal["scored", "diagnostic"]
-Method = Literal["deterministic", "agent_judge", "agent_judge_agentic",
+Method = Literal["deterministic", "agent_judge", "agent_judge_agentic", "jev_judge",
                  "pairwise_judge", "pairwise_judge_agentic",
                  "listwise_judge", "listwise_judge_agentic", "human_required"]
 ComparisonStrategy = Literal["round_robin", "sampled"]
@@ -97,6 +97,9 @@ class Dimension:
     anchors: Any = ()
     output_schema: dict[str, Any] = field(default_factory=dict)
     comparison: ComparisonConfig | None = None
+    # [实验性] JEV 结构化 questions（choice/score/noul + criteria + 可选 expected），
+    # 仅 method=jev_judge 使用；见 docs/jev-judge.md。
+    jev_questions: dict[str, Any] | None = None
 
     def __post_init__(self):
         # 从 dict 反序列化（API 请求、持久化 plan）时把 comparison 块转成配置对象。

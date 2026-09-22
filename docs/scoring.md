@@ -53,6 +53,7 @@ eval:
 deterministic          → checker
 agent_judge            → OpenAI-compatible 单次 LLM 调用
 agent_judge_agentic    → 独立 pi Judge 服务，使用工具检索证据
+jev_judge              → **[实验性]** 内网 System One（JEV）结构化 questions 单次调用，见 [`jev-judge.md`](jev-judge.md)
 pairwise_judge         → OpenAI-compatible 两两比较（inline 后端）
 pairwise_judge_agentic → 独立 pi Judge 服务两两比较（agentic 后端）
 listwise_judge         → OpenAI-compatible 整体排序（inline 后端）

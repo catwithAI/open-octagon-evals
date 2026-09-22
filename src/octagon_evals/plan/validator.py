@@ -2,9 +2,11 @@ import math
 from ..errors import PlanError
 from ..models import COMPARISON_METHODS, EvalPlan
 
-_METHODS = ("deterministic", "agent_judge", "agent_judge_agentic",
+_METHODS = ("deterministic", "agent_judge", "agent_judge_agentic", "jev_judge",
             "pairwise_judge", "pairwise_judge_agentic",
             "listwise_judge", "listwise_judge_agentic", "human_required")
+
+_VALID_JEV_TYPES = ("choice", "score", "noul")
 
 def validate_plan(plan: EvalPlan, capabilities: set[str] | None = None) -> EvalPlan:
     if plan.schema_version != 1 or not plan.dimensions:
@@ -21,9 +23,29 @@ def validate_plan(plan: EvalPlan, capabilities: set[str] | None = None) -> EvalP
             raise PlanError(f"invalid weight for {d.id}")
         if d.method in COMPARISON_METHODS:
             _validate_comparison(d)
+        if d.method == "jev_judge":
+            _validate_jev(d)
         if d.role == "scored": scored += d.weight
     if scored <= 0: raise PlanError("scored weights must sum to > 0")
     return plan
+
+
+def _validate_jev(d):
+    """JEV questions 结构校验：非空 dict、每问有合法 type 与 instructions、
+    choice/score 有 criteria（choice 可选 expected）。"""
+    questions = d.jev_questions
+    if not isinstance(questions, dict) or not questions:
+        raise PlanError(f"jev_judge dimension {d.id} requires declared jev_questions")
+    for name, q in questions.items():
+        if not isinstance(q, dict):
+            raise PlanError(f"jev question {d.id}.{name} must be an object")
+        qtype = q.get("type")
+        if qtype not in _VALID_JEV_TYPES:
+            raise PlanError(f"jev question {d.id}.{name}: invalid type {qtype!r}")
+        if not q.get("instructions"):
+            raise PlanError(f"jev question {d.id}.{name}: instructions required")
+        if qtype in ("choice", "score") and not isinstance(q.get("criteria"), dict):
+            raise PlanError(f"jev question {d.id}.{name}: criteria required for {qtype}")
 
 
 def _validate_comparison(d):

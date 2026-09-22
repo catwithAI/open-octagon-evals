@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 
 from octagon_evals.calibration import cli
+from octagon_evals.calibration.jev_pairwise import JevPairwiseJudge
 from octagon_evals.calibration.judge import JudgeTransport
 from octagon_evals.judge_service.config import JudgeServiceConfig
 from octagon_evals.scorers.agent_judge import AgentJudgeConfig
+from octagon_evals.scorers.jev import SystemOneConfig
 
 FIXTURE = Path(__file__).parents[1] / "fixtures/rubricbench_sample.json"
 
@@ -164,3 +166,75 @@ def test_cli_concurrency_thread_safe(tmp_path):
     assert transport.calls == 16  # 线程安全计数
     records = [json.loads(line) for line in verdicts.read_text().splitlines()]
     assert len(records) == len({r["case_id"] for r in records})  # 无重复 case
+
+
+def test_cli_fixed_cases(tmp_path):
+    transport = make_agentic_transport()
+    verdicts = tmp_path / "verdicts.jsonl"
+    out = tmp_path / "report.md"
+    code = cli.main(
+        ["--data", str(FIXTURE), "--backend", "agentic",
+         "--cases", "rubric_eval_1,rubric_eval_3,rubric_eval_5",
+         "--verdicts", str(verdicts), "--out", str(out)],
+        transport=transport, log=_nolog,
+    )
+    assert code == 0
+    records = [json.loads(line) for line in verdicts.read_text().splitlines()]
+    assert len(records) == 3
+    assert {r["case_id"] for r in records} == {"rubric_eval_1", "rubric_eval_3", "rubric_eval_5"}
+    report = out.read_text()
+    assert "固定 case 列表" in report
+
+
+def test_cli_jev_retry_then_skip(tmp_path):
+    class FlakyJevClient:
+        def judge(self, *, state, questions):
+            if "force-invalid" in state:  # rubric_eval_15 探针
+                from octagon_evals.errors import InvalidJudgeOutput
+                raise InvalidJudgeOutput("systemone error 413: Request Entity Too Large")
+            return {"winner": {"type": "choice", "choice": "a", "probabilities": {"a": 0.9, "b": 0.1}}}
+
+    jev = JevPairwiseJudge(config=SystemOneConfig(model="kev-4b"), client=FlakyJevClient())
+    verdicts = tmp_path / "verdicts.jsonl"
+    out = tmp_path / "report.md"
+    code = cli.main(
+        ["--data", str(FIXTURE), "--backend", "jev", "--strategy", "full",
+         "--verdicts", str(verdicts), "--out", str(out)],
+        jev_judge=jev, log=_nolog,
+    )
+    assert code == 0
+    records = [json.loads(line) for line in verdicts.read_text().splitlines()]
+    judged = [r for r in records if not r.get("skipped")]
+    skipped = [r for r in records if r.get("skipped")]
+    # force-413 探针 case（rubric_eval_15）重试两次仍失败 → 跳过；其余 15 条正常判
+    assert len(skipped) == 1 and skipped[0]["case_id"] == "rubric_eval_15"
+    assert len(judged) == 15
+    report = out.read_text()
+    assert "运行时跳过" in report
+
+
+def test_cli_jev_backend(tmp_path):
+    class FakeJevClient:
+        def judge(self, *, state, questions):
+            if "force-invalid" in state:
+                return {"winner": {"type": "choice"}}  # choice 缺失 → invalid
+            return {"winner": {"type": "choice", "choice": "b", "probabilities": {"a": 0.1, "b": 0.9}}}
+
+    jev = JevPairwiseJudge(config=SystemOneConfig(model="kev-4b"), client=FakeJevClient())
+    verdicts = tmp_path / "verdicts.jsonl"
+    out = tmp_path / "report.md"
+    code = cli.main(
+        ["--data", str(FIXTURE), "--backend", "jev", "--strategy", "full",
+         "--verdicts", str(verdicts), "--out", str(out)],
+        jev_judge=jev, log=_nolog,
+    )
+    assert code == 0
+    records = [json.loads(line) for line in verdicts.read_text().splitlines()]
+    assert len(records) == 16
+    assert all(r["backend"] == "jev" and r["model"] == "kev-4b" for r in records)
+    invalid = sum(1 for r in records if r["verdict"] is None)
+    correct = sum(1 for r in records if r["correct"])
+    assert invalid == 1  # force-invalid 探针
+    assert correct == 8  # 恒选 B：gold=1 的 8 条对
+    report = out.read_text()
+    assert "JEV 上下文上限" in report  # coverage 注记
