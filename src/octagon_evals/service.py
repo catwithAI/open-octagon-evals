@@ -10,16 +10,18 @@ from .scores.service import ScoreStore
 from .aggregation import aggregate
 from .scorers.runner import ScorerRunner
 from .scorers.agent_judge import AgentJudge
+from .scorers.jev import JevJudge
 from .scorers.pairwise import PairwiseScorer
 from .scorers.listwise import ListwiseScorer
 
 class EvaluationService:
     def __init__(self, *, db=None, registry=None, judge: AgentJudge | None = None,
-                 agentic_judge=None):
+                 agentic_judge=None, jev_judge: JevJudge | None = None):
         self.db=db; self.tasks=TaskStore(db); self.scores=ScoreStore(db)
         self.runner=ScorerRunner(registry) if registry else None
         self.judge=judge
         self.agentic_judge=agentic_judge
+        self.jev_judge=jev_judge
         self._comparison_completed: set[str] = set()
     def start(self, evaluation_input: EvaluationInput, plan: EvalPlan):
         validate_plan(plan)
@@ -70,6 +72,30 @@ class EvaluationService:
             dimension.question or dimension.id,
             anchors=dimension.anchors,
             output_schema=dimension.output_schema,
+        )
+        self.scores.record(
+            task,
+            {"value": score.value, "raw": score.raw, "reason": score.reason,
+             "evidence_refs": score.evidence_refs},
+            score.source,
+            score.lineage,
+        )
+        self.tasks.complete(task.id)
+        return score
+    def score_jev_judge(self, task, plan, evidence):
+        if self.jev_judge is None:
+            raise RuntimeError("no jev judge configured")
+        dimension = next((d for d in plan.dimensions if d.id == task.dimension_id), None)
+        if dimension is None:
+            raise ValueError(f"unknown dimension: {task.dimension_id}")
+        score = self.jev_judge.score(
+            task.id,
+            evidence,
+            dimension.question or dimension.id,
+            anchors=dimension.anchors,
+            output_schema=dimension.output_schema,
+            evidence_keys=dimension.evidence,
+            jev_questions=dimension.jev_questions,
         )
         self.scores.record(
             task,

@@ -120,7 +120,7 @@ verdicts 文件即可复现。同时满足"持久化真实输入"：prompt 原�
 ```bash
 python -m octagon_evals.calibration \
   --data ../rubricbench/data/rubricbench_data.json \
-  --backend inline            # 默认 inline = LLM-as-judge；agentic 保留作对照
+  --backend inline            # inline = LLM-as-judge（默认）；agentic 对照；jev = System One 单次 pairwise
   --strategy stratified|random|full \
   --domains code,chat \
   --limit 100 \
@@ -129,6 +129,11 @@ python -m octagon_evals.calibration \
   --verdicts calibration_verdicts.jsonl \
   --out calibration_report.md
 ```
+
+`--backend jev`（System One，`scorers/jev.py`）：`state` = 官方模板（instruction +
+checklist + A + B），`winner` choice question 直接选哪个更好（单次调用、无位置偏差）。
+受模型上下文/请求体上限（kev-4b 实测 ~10-11KB 开始 413 抖动），超限 case 排除并报
+coverage，不截断。见 [`jev-judge.md`](jev-judge.md)。
 
 inline 端点配置走环境：`OCTAGON_JUDGE_ENDPOINT` / `OCTAGON_JUDGE_MODEL` /
 `OCTAGON_JUDGE_API_KEY`（或 `--model` 只覆盖 model）。
@@ -180,6 +185,26 @@ n=40 后落到 0.875。
 **对照**：官方 gemini3-flash rubric 系统全量 Overall ≈ 0.58、CODE ≈ 0.56–0.63、
 CHAT ≈ 0.49–0.61。本次 n=40 仍偏小，CI 宽，但已显示 deepseek-4-flash 在
 rubric 引导下明显高于官方基线、且 STEM 是短板。
+
+### JEV（System One）校准（2026-09-22）
+
+**同 36 条 case 头对头（与 deepseek-4-flash 校准的同一批 40 条）**：
+
+- 40 条中 JEV 上下文上限排除 3 条（rubric_eval_409/820/900，17–28KB）、
+  运行时 413 重试后跳过 1 条，共同判定 **36 条**；
+
+| judge | ACC（36 条） | IF(3) | STEM(8) | CODE(9) | SAFE(3) | CHAT(13) |
+|---|---|---|---|---|---|---|
+| **deepseek-4-flash**（LLM-as-judge） | **0.889**（32/36） | 1.00 | 0.62 | 1.00 | 1.00 | 0.92 |
+| **kev-4b**（JEV pairwise） | **0.694**（25/36） | 0.67 | 0.62 | 0.78 | 0.67 | 0.69 |
+
+- 11 处分歧里 **JEV 只赢 2 处**（rubric_eval_157/109，均 STEM，deepseek 判错的
+  两个 STEM 难例 JEV 反而判对）；其余 9 处 deepseek 对、JEV 错；
+- STEM 两组打平（均 0.62，都是短板）；CODE/IF/SAFE/CHAT 上 deepseek 明显更强；
+- 结论：**4B 开源 JEV 模型在 rubric 引导 pairwise 上整体弱于 deepseek-4-flash**
+  （差 ~19 个点），且受上下文/请求体上限约束（40 条里只能覆盖 36，全量则更多
+  超限）。n=36 仍偏小，方向性结论。
+- 前序小样本（stratified 10，code+chat）：kev-4b 0.60 vs deepseek 1.00，同向。
 
 ## 边界
 

@@ -13,6 +13,7 @@ from .plan.validator import validate_plan
 from .scorers.deterministic import default_registry
 from .scorers.agent_judge import AgentJudge, AgentJudgeConfig
 from .scorers.agent_judge_client import AgentJudgeClient, AgentJudgeClientConfig
+from .scorers.jev import JevJudge, SystemOneConfig
 from .service import EvaluationService
 from .human import HumanTaskStore
 
@@ -40,7 +41,7 @@ class HumanSubmitRequest(BaseModel):
     reason: str | None = None
 
 def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
-               agentic_judge=None) -> FastAPI:
+               agentic_judge=None, jev_judge=None) -> FastAPI:
     app = FastAPI(title="octagon-evals", version="0.1.0")
     # The bundled static console is commonly served from a different local
     # port than the API (for example 5180 -> 8030).  Without CORS the browser
@@ -58,6 +59,7 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
         registry=default_registry(),
         judge=judge or AgentJudge(AgentJudgeConfig.from_env()),
         agentic_judge=agentic_judge or AgentJudgeClient(AgentJudgeClientConfig.from_env()),
+        jev_judge=jev_judge or JevJudge(SystemOneConfig.from_env()),
     )
     human = HumanTaskStore(db)
     plans: dict[str, EvalPlan] = {}
@@ -95,7 +97,7 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
                 raise HTTPException(404, "task not found")
         plan = plans.get(task.experiment_id) or persisted_plan(task.experiment_id)
         if plan is None: raise HTTPException(404, "plan not found")
-        if task.method not in ("deterministic", "agent_judge", "agent_judge_agentic"):
+        if task.method not in ("deterministic", "agent_judge", "agent_judge_agentic", "jev_judge"):
             raise HTTPException(409, "task requires human review")
         try:
             if task.state == "queued": service.tasks.claim(task_id)
@@ -103,6 +105,8 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
                 score = service.score_deterministic(task, plan, request.evidence)
             elif task.method == "agent_judge":
                 score = service.score_agent_judge(task, plan, request.evidence)
+            elif task.method == "jev_judge":
+                score = service.score_jev_judge(task, plan, request.evidence)
             else:
                 score = service.score_agent_judge_agentic(task, plan, request.evidence)
         except Exception as exc:

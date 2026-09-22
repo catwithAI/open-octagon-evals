@@ -16,6 +16,7 @@
 12. **比较标量转换**：相对结果用确定性、版本化的转换函数回写每-run `[0,1]` 标量（pairwise：`win_count` 默认 / `bradley_terry`；listwise：`rank_interpolation`），输入是持久化的比较原语，禁止从重采样结果反推。缺失比较的 run 该维度无分数，总分保持 pending。
 13. **比较原语持久化**：每个 pair/rank 裁决的完整输入（question、anchors、双方 evidence）与输出落 `comparisons` 表，作为派生标量的证据来源；按 `task_id` 幂等，同一 pair/rank 不重复采样。
 14. **Judge 校准**：校准是测量 harness，不是评分方法。目标锁定 **LLM-as-judge**（`agent_judge`，OpenAI-compatible 单次调用）——RubricBench 两个 response 内联在 prompt 里、无证据检索，本质是单次 LLM 比较，不走 agentic/pi 的 agent 循环。用官方协议（人工 gold + 官方原子 rubric + 论文 Appendix F prompt）直连 judge transport，裁决 `[[A]]`/`[[B]]` 解析，不改方法层 prompt 与 judge service 协议。默认**抽样校准**（分层、固定种子、ACC 带 Wilson 置信区间），裁决按 `(case_id, prompt_version)` 幂等落 JSONL 可续跑。详见 [`calibration.md`](calibration.md)。
+15. **JEV 实验性方法**：新增 `jev_judge`（pointwise，实验性）接入评分体系——plan 显式声明结构化 `jev_questions`（choice/score/noul + criteria + 可选 expected），`JevJudge` 后端调内网 System One API（`POST /v1/systemone`），确定性转 `[0,1]` 值。**纯增量**：不触碰 `agent_judge` / `agent_judge_agentic` / pairwise / listwise 的任何代码路径；不进入现有场景 plan；评分默认路径不变。详见 [`jev-judge.md`](jev-judge.md)。
 
 ## 明确延期
 
