@@ -15,6 +15,7 @@
 11. **比较式评分**：pairwise / listwise 是 pointwise 的平级方法，不是新的 HTTP 端点。方法语义（对偶构建、顺序随机、裁决校验、标量转换、原语持久化）留在主体；后端按 `score/compare/rank` 三入口注入，inline 与 agentic 对每个方法各自特化；judge service 收敛为单一通用执行器，不感知方法。详见 [`comparison-judging.md`](comparison-judging.md)。
 12. **比较标量转换**：相对结果用确定性、版本化的转换函数回写每-run `[0,1]` 标量（pairwise：`win_count` 默认 / `bradley_terry`；listwise：`rank_interpolation`），输入是持久化的比较原语，禁止从重采样结果反推。缺失比较的 run 该维度无分数，总分保持 pending。
 13. **比较原语持久化**：每个 pair/rank 裁决的完整输入（question、anchors、双方 evidence）与输出落 `comparisons` 表，作为派生标量的证据来源；按 `task_id` 幂等，同一 pair/rank 不重复采样。
+14. **Judge 校准**：校准是测量 harness，不是评分方法。目标锁定 **LLM-as-judge**（`agent_judge`，OpenAI-compatible 单次调用）——RubricBench 两个 response 内联在 prompt 里、无证据检索，本质是单次 LLM 比较，不走 agentic/pi 的 agent 循环。用官方协议（人工 gold + 官方原子 rubric + 论文 Appendix F prompt）直连 judge transport，裁决 `[[A]]`/`[[B]]` 解析，不改方法层 prompt 与 judge service 协议。默认**抽样校准**（分层、固定种子、ACC 带 Wilson 置信区间），裁决按 `(case_id, prompt_version)` 幂等落 JSONL 可续跑。详见 [`calibration.md`](calibration.md)。
 
 ## 明确延期
 
@@ -22,7 +23,7 @@
 - observation evidence cap；
 - agent 低置信度自动升级 human；
 - 多人评审、一致性和仲裁；
-- agent judge 校准、复杂统计检验和跨 Experiment leaderboard；
+- 复杂统计检验和跨 Experiment leaderboard；
 - 离线 replay 工具；
 - prompt injection 的完整防护；
 - 复杂的来源指纹清洗；

@@ -76,7 +76,7 @@
 | **Judge Gaming（judge 被骗）** | agent 通过改写自述、插入特定 token、篡改评分脚本等方式让 judge 误判为成功。 | **[研究]** 已被多篇工作证实。对策：judge 只读直接证据、独立验证通道、篡改检测。 |
 | **Same-source Bias（同源偏差）** | judge 与被测 agent 使用同源模型时对其输出的系统性偏好。 | **[研究]** 协议层面应考虑 judge 与被测模型不同源。 |
 | **Judge Error Taxonomy（judge 错误分类）** | judge 与 Gold 不一致时的归因：标注错误、rubric 错误（模糊/不全/冲突）、证据错误（缺失/错误/过载）、推理错误、领域知识错误、观测侧污染。 | **[研究]** AgentEval 使用 R1 到 R13 编码。原则："judge 与 label 不一致"不等于"judge 错"。 |
-| **Calibration（校准）** | 用人类评分修正 judge 的偏差与阈值。 | **[延期]** 需先有 Gold。 |
+| **Calibration（校准）** | 用人类评分修正 judge 的偏差与阈值。 | 已落地：`calibration/` 包校准 **LLM-as-judge**（`agent_judge` inline），跑 RubricBench 官方协议（人工 gold + 官方 rubric + 官方 prompt），产出可信度报告，见 [`calibration.md`](calibration.md)。默认抽样校准，ACC 带置信区间。 |
 | **Confidence Escalation（低置信度升级）** | judge 置信度低时自动转人工。 | **[延期]** MVP 不做。 |
 
 ## 5. Gold 与人工
