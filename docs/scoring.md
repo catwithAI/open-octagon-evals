@@ -61,6 +61,10 @@ listwise_judge_agentic → 独立 pi Judge 服务整体排序（agentic 后端�
 human_required         → 一个匹配 reviewer 的 human task
 ```
 
+归因（`POST /tasks/{id}/attribute`）是评分后的**分析角色**，不是 method、不进总分：
+agentic 驱动，输入行为证据 + rubric + 分数，输出候选归因（现象/根因/修改建议），
+见 [`attribution.md`](attribution.md)。
+
 pairwise / listwise 是**比较式评分**，与 pointwise 平级：方法语义在主体，
 后端按 `score/compare/rank` 三入口注入，judge service 是单一通用执行器。
 比较维度的相对结果经确定性转换（`win_count` / `bradley_terry` /

@@ -66,6 +66,7 @@
 | **Deterministic Checker（确定性检查器）** | 程序化断言，如测试通过、文件存在、字段匹配。 | `method: deterministic`。优先级最高，能写成 checker 的不用 judge。 |
 | **LLM-as-a-Judge（LLM 评判）** | 用语言模型依据 rubric 对产物或轨迹打分。 | `method: agent_judge`，OpenAI-compatible 接口，每维度单次调用。 |
 | **JEV（结构化裁决评判）** | 把评分问题声明为结构化 questions（choice/score/noul），由专用模型逐问裁决后确定性转分。 | **[实验性]** `method: jev_judge`，内网 System One API（`POST /v1/systemone`），questions 由 plan 显式声明，见 [`jev-judge.md`](jev-judge.md)。 |
+| **Attribution（归因）** | 评分后解释"为什么得这个分"：现象、根因、修改建议。 | agentic（pi + 工具）驱动，输入行为证据 + rubric 维度 + 分数/judge 理由，输出 `status:"candidate"` 的候选假设（供人工复核，不自动应用），见 [`attribution.md`](attribution.md)。 |
 | **Agent-as-a-Judge（Agent 评判）** | judge 自身是带工具的 agent，可主动检索证据、核对状态。 | `method: agent_judge_agentic`；本仓库通过独立 HTTP 服务驱动 pi，在临时工作区使用 `read,bash` 检索证据。 |
 | **Pairwise Judge（两两比较评判）** | judge 回答一对 run 谁更好（A/B/平），相对测量。 | `method: pairwise_judge`（inline）/ `pairwise_judge_agentic`（agentic）。方法是 pointwise 的平级手段，后端按 `compare()` 入口特化。 |
 | **Listwise Judge（整体排序评判）** | judge 给出全部 run 的一个严格全序，相对测量。 | `method: listwise_judge`（inline）/ `listwise_judge_agentic`（agentic）。`rank()` 后端入口特化。 |

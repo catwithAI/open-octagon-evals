@@ -8,12 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from .db import SQLiteStore
 from .errors import InvalidJudgeOutput
-from .models import EvaluationInput, EvalPlan, Dimension
+from .models import EvaluationInput, EvalPlan, Dimension, DimensionTask
 from .plan.validator import validate_plan
 from .scorers.deterministic import default_registry
 from .scorers.agent_judge import AgentJudge, AgentJudgeConfig
 from .scorers.agent_judge_client import AgentJudgeClient, AgentJudgeClientConfig
 from .scorers.jev import JevJudge, SystemOneConfig
+from .attribution import AttributionService
+from .judge_service.config import JudgeServiceConfig
 from .service import EvaluationService
 from .human import HumanTaskStore
 
@@ -31,9 +33,32 @@ class StartRequest(BaseModel):
 class ScoreRequest(BaseModel):
     evidence: dict[str, Any] = {}
 
+class AttributeRequest(BaseModel):
+    evidence: dict[str, Any] = {}
+
 class CompareRequest(BaseModel):
     dimension_id: str
     evidence: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+class EvaluateRequest(BaseModel):
+    """原子式单次评分请求：一个 run 的 evidence + 若干维度，一次返回全部结果。
+
+    与流程式 API（start_run → score_task）的区别：不进 experiment/task 生命周期，
+    单次调用评完返回。method 仅支持 LLM-as-judge 方法族
+    （deterministic / agent_judge / agent_judge_agentic / jev_judge）；
+    human 与 comparison 维度走既有流程式端点。
+    """
+    evaluation_id: str
+    run_id: str
+    scenario: dict[str, Any] = Field(default_factory=dict)
+    task: dict[str, Any] = Field(default_factory=dict)
+    artifact: dict[str, Any] = Field(default_factory=dict)
+    history: dict[str, Any] = Field(default_factory=dict)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    producer: dict[str, Any] = Field(default_factory=dict)
+    dimensions: list[dict[str, Any]] = Field(min_length=1)
+    deadline_seconds: float | None = None
+    judge_config: dict[str, Any] = Field(default_factory=dict)
 
 class HumanSubmitRequest(BaseModel):
     reviewer_id: str
@@ -41,7 +66,7 @@ class HumanSubmitRequest(BaseModel):
     reason: str | None = None
 
 def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
-               agentic_judge=None, jev_judge=None) -> FastAPI:
+               agentic_judge=None, jev_judge=None, attribution=None) -> FastAPI:
     app = FastAPI(title="octagon-evals", version="0.1.0")
     # The bundled static console is commonly served from a different local
     # port than the API (for example 5180 -> 8030).  Without CORS the browser
@@ -61,6 +86,7 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
         agentic_judge=agentic_judge or AgentJudgeClient(AgentJudgeClientConfig.from_env()),
         jev_judge=jev_judge or JevJudge(SystemOneConfig.from_env()),
     )
+    attributor = attribution or AttributionService(JudgeServiceConfig.from_env())
     human = HumanTaskStore(db)
     plans: dict[str, EvalPlan] = {}
     runs: dict[str, str] = {}
@@ -85,6 +111,116 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
             tasks = service.start(evaluation_input, plan); plans[experiment_id] = plan; runs[request.run_id] = experiment_id
             return {"experiment_id": experiment_id, "run_id": request.run_id, "plan_hash": plan.plan_hash, "task_ids": [t.id for t in tasks]}
         except (ValueError, KeyError) as exc: raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/evaluate")
+    def evaluate_run(request: EvaluateRequest):
+        """LLM-as-judge 原子式评分入口（agent-octagon 外部 judge 模式的对接面）。
+
+        兼容性：复用 service 的 deterministic registry / agent judge / jev judge，
+        不新建实验、不落 task 持久化（内存构造 DimensionTask），评分语义与流程式
+        ``/tasks/{id}/score`` 完全一致。结果带每维 lineage 与累计 usage，供调用方
+        补写 judge 版本锚与成本。``judge_config`` 只接受非敏感覆盖
+        （model / endpoint / prompt_version / timeout），API key 始终留在 evals 侧
+        配置，不过 HTTP。
+        """
+        unsupported = {d.get("method") for d in request.dimensions} - {
+            "deterministic", "agent_judge", "agent_judge_agentic", "jev_judge",
+        }
+        if unsupported:
+            raise HTTPException(
+                409,
+                f"/evaluate 不支持 method: {sorted(unsupported)}"
+                " —— human 与 comparison 维度走流程式 API",
+            )
+        try:
+            plan = EvalPlan(
+                1, 1,
+                tuple(Dimension(**d) for d in request.dimensions),
+                request.scenario.get("id"), request.scenario.get("version"),
+            )
+            from .plan.hash import plan_hash
+            plan = EvalPlan(
+                plan.schema_version, plan.version, plan.dimensions,
+                plan.scenario_id, plan.scenario_version, plan_hash(plan),
+            )
+            for dim in plan.dimensions:
+                task = DimensionTask(
+                    f"{request.evaluation_id}:{dim.id}",
+                    request.evaluation_id, request.run_id, plan.plan_hash,
+                    dim.id, dim.method,
+                )
+                service.tasks.tasks[task.id] = task
+            # 落 plan + task：score 落库有 FK（dimension_tasks.plan_hash→plans、
+            # dimension_scores.task_id→dimension_tasks）。只建 plan/task，不写
+            # experiments/runs——/evaluate 是单次评分入口，不建 experiment 生命周期。
+            if service.tasks.db is not None:
+                service.tasks.db.save_plan(plan)
+                for dim in plan.dimensions:
+                    service.tasks.db.create_task(
+                        service.tasks.tasks[f"{request.evaluation_id}:{dim.id}"]
+                    )
+            # per-request judge 覆盖：judge_config 缺省时不新建实例（兼容并发），
+            # 提供时仅对本次请求构造临时 AgentJudge，覆盖非敏感字段。
+            judge = None
+            jc = request.judge_config or {}
+            if jc and isinstance(service.judge, AgentJudge):
+                from dataclasses import replace
+                base = service.judge.config
+                judge = AgentJudge(replace(
+                    base,
+                    model=jc.get("model", base.model),
+                    endpoint=jc.get("endpoint", base.endpoint),
+                    prompt_version=jc.get("prompt_version", base.prompt_version),
+                    timeout=jc.get(
+                        "timeout",
+                        request.deadline_seconds if request.deadline_seconds else base.timeout,
+                    ),
+                ), opener=service.judge.opener)
+            results = []
+            for dim in plan.dimensions:
+                task = service.tasks.tasks[f"{request.evaluation_id}:{dim.id}"]
+                # complete() 要求 claimed 态：与流程式 score_task 一致，评分前认领
+                if task.state == "queued":
+                    service.tasks.claim(task.id)
+                try:
+                    if dim.method == "deterministic":
+                        score = service.score_deterministic(task, plan, request.evidence)
+                    elif dim.method == "agent_judge":
+                        score = service.score_agent_judge(task, plan, request.evidence, judge=judge)
+                    elif dim.method == "jev_judge":
+                        score = service.score_jev_judge(task, plan, request.evidence)
+                    else:
+                        score = service.score_agent_judge_agentic(task, plan, request.evidence)
+                except Exception as exc:
+                    # 与 score_task 一致：scorer 失败不留已认领的 task
+                    if task.state == "claimed":
+                        service.tasks.retry(task.id)
+                    raise HTTPException(422, str(exc)) from exc
+                results.append({
+                    "dimension_id": dim.id,
+                    "method": dim.method,
+                    "value": score.value,
+                    "reason": score.reason,
+                    "raw": score.raw,
+                    "evidence_refs": score.evidence_refs,
+                    "lineage": score.lineage,
+                })
+            usage = None
+            judge_used = judge if judge is not None else service.judge
+            if isinstance(judge_used, AgentJudge) and any(judge_used.usage.values()):
+                usage = dict(judge_used.usage)
+            return {
+                "status": "completed",
+                "evaluation_id": request.evaluation_id,
+                "run_id": request.run_id,
+                "results": results,
+                "usage": usage,
+                "error": None,
+            }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.post("/tasks/{task_id}/score")
     def score_task(task_id: str, request: ScoreRequest):
@@ -116,6 +252,62 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
                 service.tasks.retry(task_id)
             raise HTTPException(422, str(exc)) from exc
         return {"task_id": task_id, "value": score.value, "source": score.source}
+
+    def _resolved_score(task_id):
+        score = service.scores.resolved.get(task_id)
+        if score is not None:
+            return score
+        resolved = [r for r in db.list_scores(task_id) if r["resolved"]]
+        if resolved:
+            return db.get_score(resolved[-1]["id"])
+        return None
+
+    def _task_plan_dimension(task):
+        plan = plans.get(task.experiment_id) or persisted_plan(task.experiment_id)
+        if plan is None:
+            return None, None
+        return plan, next((d for d in plan.dimensions if d.id == task.dimension_id), None)
+
+    @app.post("/tasks/{task_id}/attribute")
+    def attribute_task(task_id: str, request: AttributeRequest):
+        task = service.tasks.tasks.get(task_id)
+        if task is None:
+            try:
+                task = db.get_task(task_id)
+            except KeyError:
+                raise HTTPException(404, "task not found")
+        plan, dimension = _task_plan_dimension(task)
+        if plan is None or dimension is None:
+            raise HTTPException(404, "plan or dimension not found")
+        score = _resolved_score(task_id)
+        if score is None:
+            raise HTTPException(422, "task has no resolved score to attribute")
+        try:
+            return attributor.attribute(dimension=dimension, score=score, evidence=request.evidence)
+        except InvalidJudgeOutput as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/runs/{run_id}/attribute")
+    def attribute_run(run_id: str, request: AttributeRequest):
+        if not service.tasks.tasks:
+            for row in db.list_runs(run_id):
+                for task_row in db.list_tasks(row["id"]):
+                    service.tasks.tasks[task_row["id"]] = db.get_task(task_row["id"])
+        tasks = [t for t in service.tasks.tasks.values() if t.run_id == run_id]
+        results = []
+        for task in tasks:
+            plan, dimension = _task_plan_dimension(task)
+            score = _resolved_score(task.id)
+            if plan is None or dimension is None or score is None:
+                continue
+            try:
+                attribution = attributor.attribute(dimension=dimension, score=score, evidence=request.evidence)
+                results.append({"task_id": task.id, "dimension_id": task.dimension_id, "attribution": attribution})
+            except InvalidJudgeOutput as exc:
+                results.append({"task_id": task.id, "dimension_id": task.dimension_id, "error": str(exc)})
+        if not results:
+            raise HTTPException(422, "run has no scored dimensions to attribute")
+        return {"run_id": run_id, "attributions": results}
 
     @app.post("/experiments/{experiment_id}/compare")
     def compare_dimension(experiment_id: str, request: CompareRequest):
