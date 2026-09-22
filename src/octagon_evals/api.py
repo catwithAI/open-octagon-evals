@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from .db import SQLiteStore
+from .errors import InvalidJudgeOutput
 from .models import EvaluationInput, EvalPlan, Dimension
 from .plan.validator import validate_plan
 from .scorers.deterministic import default_registry
@@ -28,6 +29,10 @@ class StartRequest(BaseModel):
 
 class ScoreRequest(BaseModel):
     evidence: dict[str, Any] = {}
+
+class CompareRequest(BaseModel):
+    dimension_id: str
+    evidence: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 class HumanSubmitRequest(BaseModel):
     reviewer_id: str
@@ -107,6 +112,20 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
                 service.tasks.retry(task_id)
             raise HTTPException(422, str(exc)) from exc
         return {"task_id": task_id, "value": score.value, "source": score.source}
+
+    @app.post("/experiments/{experiment_id}/compare")
+    def compare_dimension(experiment_id: str, request: CompareRequest):
+        plan = plans.get(experiment_id) or persisted_plan(experiment_id)
+        if plan is None: raise HTTPException(404, "experiment not found")
+        try:
+            derived = service.score_comparison(experiment_id, plan, request.dimension_id, request.evidence)
+        except (ValueError, KeyError, InvalidJudgeOutput) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {
+            "experiment_id": experiment_id,
+            "dimension_id": request.dimension_id,
+            "scores": {run_id: {"value": s.value, "source": s.source} for run_id, s in derived.items()},
+        }
 
     @app.get("/experiments/{experiment_id}/score")
     def experiment_score(experiment_id: str):

@@ -20,13 +20,16 @@ class PiRunner:
     config: JudgeServiceConfig
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run
 
-    def run(self, *, prompt: str, workspace: str) -> str:
+    def run(self, *, prompt: str, workspace: str, system_prompt: str | None = None) -> str:
         """Invoke pi in the workspace and return the final assistant text.
+
+        ``system_prompt`` overrides the default judge prompt; the service is a
+        generic executor and method-level prompts come from the caller.
 
         Raises ``InvalidJudgeOutput`` on timeout, non-zero exit, empty output,
         or when no assistant text can be extracted.
         """
-        cmd = self._build_command(prompt)
+        cmd = self._build_command(prompt, system_prompt)
         try:
             result = self.runner(
                 cmd,
@@ -47,7 +50,7 @@ class PiRunner:
             )
         return self._extract_final_text(result.stdout)
 
-    def _build_command(self, prompt: str) -> list[str]:
+    def _build_command(self, prompt: str, system_prompt: str | None = None) -> list[str]:
         c = self.config
         cmd = [c.pi_bin, "--mode", "json", "--print", "--no-session"]
         if c.provider:
@@ -60,7 +63,7 @@ class PiRunner:
             cmd += ["--tools", ",".join(c.tools)]
         else:
             cmd += ["--no-tools"]
-        cmd += ["--system-prompt", _SYSTEM_PROMPT, prompt]
+        cmd += ["--system-prompt", system_prompt or _SYSTEM_PROMPT, prompt]
         return cmd
 
     def _extract_final_text(self, stdout: str) -> str:

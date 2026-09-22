@@ -10,7 +10,7 @@
 - Judge 通过 `read`、`bash` 工具主动读取证据工作区；
 - 输出经过 JSON 解析和 `[0,1]` 分值校验；
 - eval API 可以通过 `method: agent_judge_agentic` 调用 Judge 服务；
-- 自动化测试不需要真实模型，当前全量测试为 56 项；
+- 自动化测试不需要真实模型，当前全量测试为 55 项；
 - 已使用本机 `pi 0.84.1` 完成真实端到端冒烟测试。
 
 以下能力**不在当前验收范围**：
@@ -121,11 +121,11 @@ pi --mode json --print --no-session --thinking off "reply with exactly: OK"
 
 默认启动：
 
-| 服务 | 地址 |
-|---|---|
+| 服务     | 地址                      |
+| -------- | ------------------------- |
 | eval API | `http://127.0.0.1:8000` |
 | pi Judge | `http://127.0.0.1:8001` |
-| 控制台 | `http://127.0.0.1:5173` |
+| 控制台   | `http://127.0.0.1:5173` |
 
 `start.sh` 会检查 Python 依赖、`pi` 是否存在，以及显式配置的 provider/model 是否已认证。如果端口被占用，会在附近选择空闲端口，并自动把实际 Judge 地址写入 `OCTAGON_JUDGE_SERVICE_URL` 后再启动 eval API。
 
@@ -154,25 +154,25 @@ curl -sS http://127.0.0.1:8001/health
 
 ### Judge 服务
 
-| 环境变量 | 默认值 | 说明 |
-|---|---:|---|
-| `OCTAGON_JUDGE_PI_BIN` | `pi` | pi 可执行文件路径 |
-| `OCTAGON_JUDGE_PROVIDER` | 未设置 | 传给 `pi --provider`；未设置时使用 pi 默认值 |
-| `OCTAGON_JUDGE_MODEL` | 未设置 | 传给 `pi --model`；未设置时使用 pi 默认值 |
-| `OCTAGON_JUDGE_PROMPT_VERSION` | `agentic-1` | 写入 score lineage 的 prompt 版本 |
-| `OCTAGON_JUDGE_TIMEOUT` | `300` | 单次 pi 子进程硬超时，单位秒 |
-| `OCTAGON_JUDGE_TOOLS` | `read,bash` | pi 工具白名单，逗号分隔 |
-| `OCTAGON_JUDGE_THINKING` | `off` | 传给 `pi --thinking` |
-| `OCTAGON_JUDGE_WORKSPACE_BASE` | 系统临时目录 | Judge 临时工作区父目录 |
-| `OCTAGON_JUDGE_HOST` | `127.0.0.1` | `start.sh` 中 Judge 监听地址 |
-| `OCTAGON_JUDGE_PORT` | `8001` | `start.sh` 中 Judge 监听端口 |
+| 环境变量                         |        默认值 | 说明                                          |
+| -------------------------------- | ------------: | --------------------------------------------- |
+| `OCTAGON_JUDGE_PI_BIN`         |        `pi` | pi 可执行文件路径                             |
+| `OCTAGON_JUDGE_PROVIDER`       |        未设置 | 传给`pi --provider`；未设置时使用 pi 默认值 |
+| `OCTAGON_JUDGE_MODEL`          |        未设置 | 传给`pi --model`；未设置时使用 pi 默认值    |
+| `OCTAGON_JUDGE_PROMPT_VERSION` | `agentic-1` | 写入 score lineage 的 prompt 版本             |
+| `OCTAGON_JUDGE_TIMEOUT`        |       `300` | 单次 pi 子进程硬超时，单位秒                  |
+| `OCTAGON_JUDGE_TOOLS`          | `read,bash` | pi 工具白名单，逗号分隔                       |
+| `OCTAGON_JUDGE_THINKING`       |       `off` | 传给`pi --thinking`                         |
+| `OCTAGON_JUDGE_WORKSPACE_BASE` |  系统临时目录 | Judge 临时工作区父目录                        |
+| `OCTAGON_JUDGE_HOST`           | `127.0.0.1` | `start.sh` 中 Judge 监听地址                |
+| `OCTAGON_JUDGE_PORT`           |      `8001` | `start.sh` 中 Judge 监听端口                |
 
 ### eval API 到 Judge 服务
 
-| 环境变量 | 默认值 | 说明 |
-|---|---:|---|
-| `OCTAGON_JUDGE_SERVICE_URL` | `http://127.0.0.1:8001` | eval API 调用的 Judge 基地址 |
-| `OCTAGON_JUDGE_CLIENT_TIMEOUT` | `330` | HTTP 客户端超时，必须大于 Judge 子进程超时 |
+| 环境变量                         |                    默认值 | 说明                                       |
+| -------------------------------- | ------------------------: | ------------------------------------------ |
+| `OCTAGON_JUDGE_SERVICE_URL`    | `http://127.0.0.1:8001` | eval API 调用的 Judge 基地址               |
+| `OCTAGON_JUDGE_CLIENT_TIMEOUT` |                   `330` | HTTP 客户端超时，必须大于 Judge 子进程超时 |
 
 如果修改 `OCTAGON_JUDGE_TIMEOUT`，应同时保证：
 
@@ -185,6 +185,12 @@ OCTAGON_JUDGE_CLIENT_TIMEOUT > OCTAGON_JUDGE_TIMEOUT
 ## HTTP 协议
 
 ### `POST /judge`
+
+服务是**单一通用执行器**：给定 question + anchors + evidence + output_schema
+（+ 可选 `system_prompt`），跑 pi 工作区，返回一个满足输出约束的 JSON 裁决。
+pointwise / pairwise / listwise 是主体里的平级方法，不在此服务建模；
+比较式评分的方法级系统提示由主体后端拼好后经 `system_prompt` 传入。
+详见 [`comparison-judging.md`](comparison-judging.md)。
 
 请求体：
 
@@ -219,20 +225,30 @@ OCTAGON_JUDGE_CLIENT_TIMEOUT > OCTAGON_JUDGE_TIMEOUT
 
 字段：
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `task_id` | string | 是 | Judge 去重键；一次成功后同进程内不可再次评分 |
-| `dimension_question` | string | 是 | 单一评分问题 |
-| `anchors` | array<object> | 否 | 评分锚点，默认空数组 |
-| `output_schema` | object | 否 | 期望输出约束；默认要求 `value/reason/raw` |
-| `evidence` | object | 是 | 将被物化到临时工作区的证据 |
-| `lineage` | object | 否 | 调用方血统字段，服务会追加/覆盖 Judge 自身字段 |
+| 字段                   | 类型                   | 必填 | 说明                                           |
+| ---------------------- | ---------------------- | ---- | ---------------------------------------------- |
+| `task_id`            | string                 | 是   | Judge 去重键；一次成功后同进程内不可再次评分   |
+| `dimension_question` | string                 | 是   | 单一评分问题                                   |
+| `anchors`            | array<object></object> | 否   | 评分锚点，默认空数组                           |
+| `output_schema`      | object                 | 否   | 期望输出约束；默认要求`value/reason/raw`     |
+| `evidence`           | object                 | 是   | 将被物化到临时工作区的证据                     |
+| `system_prompt`      | string                 | 否   | 覆盖默认 judge 系统提示；未设置时使用默认      |
+| `files`              | object                 | 否   | 显式工作区文件映射（`path -> content`，path 可含 `/` 建子目录）；未设置时按 `evidence` 顶层键拆分 |
+| `lineage`            | object                 | 否   | 调用方血统字段，服务会追加/覆盖 Judge 自身字段 |
 
 成功响应：
 
 ```json
 {
   "task_id": "run-1:plan-hash:quality",
+  "result": {
+    "value": 1.0,
+    "reason": "The workspace log and final state both show hello.txt was created.",
+    "raw": {
+      "workspace_log": "pass",
+      "final_state": "pass"
+    }
+  },
   "value": 1.0,
   "reason": "The workspace log and final state both show hello.txt was created.",
   "raw": {
@@ -254,8 +270,11 @@ OCTAGON_JUDGE_CLIENT_TIMEOUT > OCTAGON_JUDGE_TIMEOUT
 
 输出约束：
 
-- `value` 是唯一强制解析和范围校验的 Judge 内容字段，必须是有限数字且位于 `[0,1]`；
-- `reason` 和 `raw` 在协议中推荐提供，但当前响应模型允许为 `null`；
+- `result` 始终携带 pi 输出解析出的完整 JSON 裁决，是唯一权威内容；
+- pointwise 裁决含 `value` 时，派生字段 `value/reason/raw` 照旧填充以向后兼容；
+  比较式裁决（如 `winner` / `ranking`）不含 `value`，`value` 为 `null`，语义校验在主体后端完成；
+- `value` 存在时仍是唯一强制解析和范围校验的 Judge 内容字段，必须是有限数字且位于 `[0,1]`；
+- 服务按 `output_schema.required` 校验裁决存在所需键；缺键 / 无法解析 / `value` 非法均返回 422；
 - `source` 固定为 `agent_judge_agentic`；
 - 服务字段 `provider`、`model`、`prompt_version`、`judge_service_version`、`pi_version` 会覆盖请求 lineage 中的同名字段；
 - 未显式配置 provider/model 时，lineage 记录 `pi-default`，表示使用 pi 默认配置，不代表实际模型名就是该字符串。
@@ -282,12 +301,12 @@ curl -sS -X POST http://127.0.0.1:8001/judge \
 
 ### 错误响应
 
-| 状态码 | 场景 |
-|---:|---|
-| `200` | 评分成功 |
-| `409` | 当前 Judge 进程已成功处理过相同 `task_id` |
-| `422` | 请求 schema 非法、pi 超时/启动失败/非零退出、没有最终 assistant 文本、Judge 输出无法解析或 `value` 非法 |
-| `500` | 未归类的服务端错误，例如临时目录或文件系统失败 |
+|  状态码 | 场景                                                                                                     |
+| ------: | -------------------------------------------------------------------------------------------------------- |
+| `200` | 评分成功                                                                                                 |
+| `409` | 当前 Judge 进程已成功处理过相同`task_id`                                                               |
+| `422` | 请求 schema 非法、pi 超时/启动失败/非零退出、没有最终 assistant 文本、Judge 输出无法解析或`value` 非法 |
+| `500` | 未归类的服务端错误，例如临时目录或文件系统失败                                                           |
 
 失败不会把 `task_id` 写入已评分集合，因此技术故障后可以由上层重试；成功后重复调用返回 409。
 
@@ -301,9 +320,13 @@ curl -sS -X POST http://127.0.0.1:8001/judge \
 
 ### System prompt
 
+未传 `system_prompt` 时使用默认：
+
 ```text
 You are an evaluation judge. Read the evidence files in the current directory if you need to, then answer with a single JSON object with keys value, reason, raw. value is a finite number in [0,1]. Do not explore further than necessary.
 ```
+
+传入 `system_prompt` 时（例如比较式评分的方法级提示），原样覆盖默认值。
 
 ### User prompt
 
@@ -335,7 +358,11 @@ You are an evaluation judge. Read the evidence files in the current directory if
     └── final_state
 ```
 
-`evidence.json` 保留完整结构；`evidence/` 下每个顶层键单独写一个文件，便于 Judge 按需读取。文件名只保留字母、数字和 `-_.`，其余字符替换为 `_`；清洗后重名时追加 `_2`、`_3` 后缀。请求结束后工作区在 `finally` 中删除。
+`evidence.json` 保留完整结构；`evidence/` 下每个顶层键单独写一个文件，便于 Judge 按需读取。文件名只保留字母、数字和 `-_.`，其余字符替换为 `_`；清洗后重名时追加 `_2`、`_3` 后缀。
+
+传入 `files` 时，除 `evidence.json` 外按显式映射写文件，path 中 `/` 会创建子目录：
+例如比较式评分的 agentic 后端把每个候选的证据落成 `run-a/final_state`、
+`run-b/final_state`，pi 用 `read`/`bash` 分别探索。请求结束后工作区在 `finally` 中删除。
 
 ### pi 命令
 
@@ -394,8 +421,6 @@ eval API 会调用 `OCTAGON_JUDGE_SERVICE_URL/judge`，保存 `DimensionScore`�
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m pytest -q
 ```
-
-当前 pi Judge 新模块的行覆盖率为 96%（219 statements，9 missed）：`config.py`、`models.py`、`workspace.py`、`agent_judge_client.py` 为 100%，`app.py` 为 96%，`pi_runner.py` 为 91%。覆盖率用于识别未执行代码，不等价于真实 provider 的可靠性或评分准确率。
 
 当前覆盖：
 
