@@ -53,8 +53,18 @@ eval:
 deterministic          → checker
 agent_judge            → OpenAI-compatible 单次 LLM 调用
 agent_judge_agentic    → 独立 pi Judge 服务，使用工具检索证据
+pairwise_judge         → OpenAI-compatible 两两比较（inline 后端）
+pairwise_judge_agentic → 独立 pi Judge 服务两两比较（agentic 后端）
+listwise_judge         → OpenAI-compatible 整体排序（inline 后端）
+listwise_judge_agentic → 独立 pi Judge 服务整体排序（agentic 后端）
 human_required         → 一个匹配 reviewer 的 human task
 ```
+
+pairwise / listwise 是**比较式评分**，与 pointwise 平级：方法语义在主体，
+后端按 `score/compare/rank` 三入口注入，judge service 是单一通用执行器。
+比较维度的相对结果经确定性转换（`win_count` / `bradley_terry` /
+`rank_interpolation`）回写每-run `[0,1]` 标量，再进入聚合。
+详细协议见 [`comparison-judging.md`](comparison-judging.md)。
 
 MVP 不做 agent judge 低置信度升级 human。confidence 如果保留，只是诊断字段，不参与路由。
 

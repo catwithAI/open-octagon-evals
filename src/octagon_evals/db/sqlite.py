@@ -1,8 +1,9 @@
 from __future__ import annotations
+import dataclasses
 import json, sqlite3, time
 from contextlib import contextmanager
 from pathlib import Path
-from ..models import DimensionTask, DimensionScore
+from ..models import ComparisonTask, DimensionTask, DimensionScore
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -35,6 +36,17 @@ CREATE TABLE IF NOT EXISTS human_tasks (
   id TEXT PRIMARY KEY, run_id TEXT NOT NULL, dimension_id TEXT NOT NULL,
   evidence_refs TEXT NOT NULL, reviewer_id TEXT, state TEXT NOT NULL, score_json TEXT, updated_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS comparison_tasks (
+  id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, plan_hash TEXT NOT NULL,
+  dimension_id TEXT NOT NULL, method TEXT NOT NULL, state TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0, lease_until REAL, created_at REAL NOT NULL, updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS comparisons (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL UNIQUE,
+  experiment_id TEXT NOT NULL, plan_hash TEXT NOT NULL, dimension_id TEXT NOT NULL,
+  kind TEXT NOT NULL, input_json TEXT NOT NULL, output_json TEXT NOT NULL,
+  lineage TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL
+);
 """
 
 class SQLiteStore:
@@ -64,7 +76,7 @@ class SQLiteStore:
     def close(self): self.conn.close()
 
     def save_plan(self, plan):
-        payload = json.dumps({"dimensions": [d.__dict__ for d in plan.dimensions]}, sort_keys=True)
+        payload = json.dumps({"dimensions": [dataclasses.asdict(d) for d in plan.dimensions]}, sort_keys=True)
         self.conn.execute("INSERT OR IGNORE INTO plans VALUES (?,?,?,?,?,?,?)", (plan.plan_hash, plan.schema_version, plan.version, plan.scenario_id, str(plan.scenario_version) if plan.scenario_version is not None else None, payload, time.time()))
 
     def create_task(self, task: DimensionTask) -> DimensionTask:
@@ -139,3 +151,30 @@ class SQLiteStore:
         row=self.conn.execute("SELECT * FROM human_tasks WHERE id=?",(task_id,)).fetchone()
         if row is None: raise KeyError(task_id)
         return row
+
+    def save_comparison_task(self, task: ComparisonTask):
+        now=time.time()
+        self.conn.execute("INSERT OR IGNORE INTO comparison_tasks VALUES (?,?,?,?,?,?,?,?,?,?)", (task.id,task.experiment_id,task.plan_hash,task.dimension_id,task.method,task.state,task.attempts,task.lease_until,now,now))
+        self.conn.execute("UPDATE comparison_tasks SET state=?, attempts=?, lease_until=?, updated_at=? WHERE id=?", (task.state,task.attempts,task.lease_until,time.time(),task.id))
+    def get_comparison_task(self, task_id):
+        row=self.conn.execute("SELECT * FROM comparison_tasks WHERE id=?",(task_id,)).fetchone()
+        if row is None: raise KeyError(task_id)
+        return ComparisonTask(row["id"],row["experiment_id"],row["plan_hash"],row["dimension_id"],row["method"],row["state"],row["attempts"],row["lease_until"])
+    def list_comparison_tasks(self, experiment_id):
+        return self.conn.execute("SELECT * FROM comparison_tasks WHERE experiment_id=? ORDER BY id", (experiment_id,)).fetchall()
+
+    def save_comparison(self, *, task_id, experiment_id, plan_hash, dimension_id, kind, input_, output, lineage=None):
+        """比较原语幂等落库：同一 task_id 已存在则不覆盖。"""
+        self.conn.execute(
+            "INSERT OR IGNORE INTO comparisons(task_id,experiment_id,plan_hash,dimension_id,kind,input_json,output_json,lineage,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (task_id,experiment_id,plan_hash,dimension_id,kind,json.dumps(input_,sort_keys=True),json.dumps(output,sort_keys=True),json.dumps(lineage or {},sort_keys=True),time.time()))
+    def get_comparison(self, task_id):
+        row=self.conn.execute("SELECT * FROM comparisons WHERE task_id=?",(task_id,)).fetchone()
+        if row is None: return None
+        return row
+    def list_comparisons(self, *, experiment_id=None, dimension_id=None):
+        sql="SELECT * FROM comparisons"; where=[]; params=[]
+        if experiment_id is not None: where.append("experiment_id=?"); params.append(experiment_id)
+        if dimension_id is not None: where.append("dimension_id=?"); params.append(dimension_id)
+        if where: sql += " WHERE " + " AND ".join(where)
+        return self.conn.execute(sql + " ORDER BY id", params).fetchall()

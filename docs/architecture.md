@@ -27,11 +27,15 @@ Experiment：同一个 task 的一次对比实验
 │   └── DimensionTask × M
 ├── AgentRun B
 │   └── DimensionTask × M
-└── AgentRun C
-    └── DimensionTask × M
+├── AgentRun C
+│   └── DimensionTask × M
+└── ComparisonTask（可选，只用于 pairwise_* / listwise_* 比较维度）
+    └── comparisons 原语 × P（每 pair/rank 一次裁决）
 ```
 
 一个 DimensionTask 只包含一个 AgentRun 和一个 dimension。它可以引用该 run 的 artifact、history 或两者，但不能包含其他 agent run，也不能在一个 task 中评价多个维度。
+
+一个 ComparisonTask 属于一个 Experiment 和一个比较维度，横跨多个 AgentRun。它不直接产生 DimensionScore；它的相对裁决经确定性转换（`win_count` / `bradley_terry` / `rank_interpolation`）回写每-run 的 `DimensionScore`，再参与聚合。详细协议见 [`comparison-judging.md`](comparison-judging.md)。
 
 ## 生命周期
 
@@ -42,7 +46,9 @@ Experiment：同一个 task 的一次对比实验
   → 上游创建 N 个 AgentRun
   → 接收 EvaluationInput
   → 为每个 scored/human_required 维度建 task
+    （pairwise_* / listwise_* 比较维度不建 per-run task）
   → deterministic / agent judge / human 评分
+  → （可选）比较维度：对偶采样 → judge 裁决 → 持久化原语 → 转换派生标量
   → 所有计分维度 resolved
   → 加权平均并生成 final total_score
 ```

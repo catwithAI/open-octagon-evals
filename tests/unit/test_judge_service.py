@@ -89,3 +89,68 @@ def test_judge_health_reports_pi_version():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+def test_judge_endpoint_echoes_result_and_keeps_pointwise_fields():
+    verdict = json.dumps({"value": 0.75, "reason": "mostly there", "raw": {"passed": ["a"]}})
+    client = TestClient(_make_app(verdict))
+    resp = client.post("/judge", json={
+        "task_id": "t-result",
+        "dimension_question": "Is it good?",
+        "evidence": {"output": "hello"},
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["result"] == {"value": 0.75, "reason": "mostly there", "raw": {"passed": ["a"]}}
+    assert body["value"] == 0.75
+    assert body["reason"] == "mostly there"
+
+
+def test_judge_endpoint_returns_compare_verdict_without_value():
+    verdict = json.dumps({"winner": "run-a", "reason": "a wins", "raw": {"a": 1, "b": 0}})
+    client = TestClient(_make_app(verdict))
+    resp = client.post("/judge", json={
+        "task_id": "t-compare",
+        "dimension_question": "Which is better?",
+        "evidence": {"run-a": {"x": 1}, "run-b": {"x": 0}},
+        "system_prompt": "You are a pairwise judge.",
+        "output_schema": {"type": "object", "required": ["winner", "reason", "raw"]},
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["result"]["winner"] == "run-a"
+    assert body["value"] is None
+    assert body["source"] == "agent_judge_agentic"
+
+
+def test_judge_endpoint_rejects_output_missing_required_keys():
+    # 要求 winner 键，pi 却返回 value → 422，不猜分不置零。
+    verdict = json.dumps({"value": 0.5, "reason": "wrong shape", "raw": {}})
+    client = TestClient(_make_app(verdict))
+    resp = client.post("/judge", json={
+        "task_id": "t-badshape",
+        "dimension_question": "Which is better?",
+        "evidence": {"run-a": {}, "run-b": {}},
+        "output_schema": {"type": "object", "required": ["winner", "reason", "raw"]},
+    })
+    assert resp.status_code == 422
+
+
+def test_judge_endpoint_forwards_system_prompt_to_pi():
+    captured = {}
+
+    def _runner(cmd, **kw):
+        captured["cmd"] = cmd
+        return _FakeCompletedProcess(_ndjson(json.dumps({"value": 1.0, "reason": "ok", "raw": {}})))
+
+    runner = PiRunner(JudgeServiceConfig(), runner=_runner)
+    client = TestClient(create_judge_app(JudgeServiceConfig(), runner=runner))
+    resp = client.post("/judge", json={
+        "task_id": "t-prompt",
+        "dimension_question": "q",
+        "evidence": {},
+        "system_prompt": "CUSTOM-JUDGE-PROMPT",
+    })
+    assert resp.status_code == 200
+    assert "--system-prompt" in captured["cmd"]
+    assert captured["cmd"][captured["cmd"].index("--system-prompt") + 1] == "CUSTOM-JUDGE-PROMPT"

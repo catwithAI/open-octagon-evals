@@ -1,9 +1,13 @@
 import time
 from ..errors import InvalidStateTransition, StaleSubmission
-from ..models import DimensionTask, EvaluationInput, EvalPlan
+from ..models import COMPARISON_METHODS, DimensionTask, EvaluationInput, EvalPlan
 
 def create_tasks(inp: EvaluationInput, plan: EvalPlan, store: "TaskStore | None" = None) -> list[DimensionTask]:
-    store = store or TaskStore(); return [store.create(inp, plan, d.id, d.method) for d in plan.dimensions if d.role == "scored" or d.method == "human_required"]
+    store = store or TaskStore()
+    # 比较维度由 experiment 级 ComparisonTask 驱动，不创建 per-run 任务。
+    dims = [d for d in plan.dimensions
+            if (d.role == "scored" or d.method == "human_required") and d.method not in COMPARISON_METHODS]
+    return [store.create(inp, plan, d.id, d.method) for d in dims]
 
 class TaskStore:
     def __init__(self, db=None): self.tasks = {}; self.results = {}; self.db = db

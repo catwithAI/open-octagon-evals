@@ -14,6 +14,18 @@ from .workspace import cleanup_workspace, create_evidence_workspace
 
 _JUDGE_SERVICE_VERSION = "0.1.0"
 
+_DEFAULT_REQUIRED = ["value", "reason", "raw"]
+
+
+def _validate_required(output: dict, output_schema: dict) -> None:
+    """裁决必须包含 output_schema.required 声明的键（默认 value/reason/raw）。"""
+    required = (output_schema or {}).get("required") or _DEFAULT_REQUIRED
+    missing = [k for k in required if k not in output]
+    if missing:
+        raise InvalidJudgeOutput(
+            f"judge output missing required key(s): {missing}"
+        )
+
 
 def _build_user_prompt(request: JudgeRequest) -> str:
     payload = {
@@ -57,10 +69,17 @@ def create_judge_app(
     def judge(request: JudgeRequest):
         if request.task_id in judged:
             raise HTTPException(409, "task already judged")
-        workspace = create_evidence_workspace(request.evidence, config.workspace_base)
+        workspace = create_evidence_workspace(
+            request.evidence, config.workspace_base, files=request.files
+        )
         try:
-            content = pi_runner.run(prompt=_build_user_prompt(request), workspace=workspace)
+            content = pi_runner.run(
+                prompt=_build_user_prompt(request),
+                workspace=workspace,
+                system_prompt=request.system_prompt,
+            )
             output = parse_judge_content(content)
+            _validate_required(output, request.output_schema)
             lineage = dict(request.lineage)
             lineage.update(
                 {
@@ -71,15 +90,20 @@ def create_judge_app(
                     "pi_version": _get_pi_version(config.pi_bin),
                 }
             )
-            score = parse_score(request.task_id, output, "agent_judge_agentic", lineage)
+            value = None
+            if "value" in output:
+                score = parse_score(request.task_id, output, "agent_judge_agentic", lineage)
+                value = score.value
+                lineage = score.lineage
             judged.add(request.task_id)
             return JudgeResponse(
-                task_id=score.task_id,
-                value=score.value,
-                reason=score.reason,
-                raw=score.raw,
-                source=score.source,
-                lineage=score.lineage,
+                task_id=request.task_id,
+                result=output,
+                value=value,
+                reason=output.get("reason"),
+                raw=output.get("raw"),
+                source="agent_judge_agentic",
+                lineage=lineage,
             )
         except InvalidJudgeOutput as exc:
             raise HTTPException(422, str(exc)) from exc

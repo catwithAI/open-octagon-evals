@@ -12,6 +12,9 @@
 8. **来源**：平台不主动向评分者提供 producer agent 来源，但不承诺评分者无法推测来源。
 9. **上游边界**：执行、调度、场景和 model 故障归因属于 OpenAgentOctagon，不属于 eval。
 10. **版本**：scenario、plan、dimension、scorer、prompt、model 和 evidence 都要可追溯；旧分数不可覆盖。
+11. **比较式评分**：pairwise / listwise 是 pointwise 的平级方法，不是新的 HTTP 端点。方法语义（对偶构建、顺序随机、裁决校验、标量转换、原语持久化）留在主体；后端按 `score/compare/rank` 三入口注入，inline 与 agentic 对每个方法各自特化；judge service 收敛为单一通用执行器，不感知方法。详见 [`comparison-judging.md`](comparison-judging.md)。
+12. **比较标量转换**：相对结果用确定性、版本化的转换函数回写每-run `[0,1]` 标量（pairwise：`win_count` 默认 / `bradley_terry`；listwise：`rank_interpolation`），输入是持久化的比较原语，禁止从重采样结果反推。缺失比较的 run 该维度无分数，总分保持 pending。
+13. **比较原语持久化**：每个 pair/rank 裁决的完整输入（question、anchors、双方 evidence）与输出落 `comparisons` 表，作为派生标量的证据来源；按 `task_id` 幂等，同一 pair/rank 不重复采样。
 
 ## 明确延期
 
@@ -30,5 +33,4 @@
 - 在场景固定 plan 之上增加 task-specific plan variant；
 - 用维度族和 benchmark profile 约束跨实验的近似可比性；
 - 增加更多 evidence 类型和标准化采集参数；
-- 评估是否需要多人 reviewer、judge calibration 或比较式评分；
 - 在真实运行数据基础上决定成本预算、超时策略和统计报告。
