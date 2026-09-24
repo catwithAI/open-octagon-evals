@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from .db import SQLiteStore
 from .errors import InvalidJudgeOutput
-from .models import EvaluationInput, EvalPlan, Dimension, DimensionTask
+from .models import EvaluationInput, EvalPlan, Dimension, DimensionScore, DimensionTask
 from .plan.validator import validate_plan
 from .scorers.deterministic import default_registry
 from .scorers.agent_judge import AgentJudge, AgentJudgeConfig
@@ -59,6 +59,19 @@ class EvaluateRequest(BaseModel):
     dimensions: list[dict[str, Any]] = Field(min_length=1)
     deadline_seconds: float | None = None
     judge_config: dict[str, Any] = Field(default_factory=dict)
+
+class AtomicAttributeRequest(BaseModel):
+    """原子式归因请求：维度 + 已有分数 + 证据，一次调用返回候选归因。
+
+    与流程式 ``/tasks/{id}/attribute`` 的区别：不依赖 experiment/task 生命周期。
+    流程式端点要经 ``persisted_plan()`` 反查 experiment 行，而 ``/evaluate``
+    只落 plan/task、从不写 experiment，故那条路对 ``/evaluate`` 产生的 task
+    必然 404。归因本身只需要 (dimension, score, evidence) 三个值，这里直接收。
+    """
+    attribution_id: str
+    dimension: dict[str, Any]
+    score: dict[str, Any]
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 class HumanSubmitRequest(BaseModel):
     reviewer_id: str
@@ -221,6 +234,48 @@ def create_app(db_path: str | None = None, *, judge: AgentJudge | None = None,
             raise
         except Exception as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/attribute")
+    def attribute_atomic(request: AtomicAttributeRequest):
+        """原子式归因入口（agent-octagon 外部归因模式的对接面）。
+
+        归因语义与流程式 ``/tasks/{id}/attribute`` 完全一致——同一个
+        ``AttributionService``、同一套 prompt 与校验。差别只在分数从哪来：
+        这里由调用方直接给出，因为 agent-octagon 的分数落在它自己的库里，
+        不在 evals 的 ``dimension_scores`` 表中。
+
+        产物恒为 ``status="candidate"``，供人工复核，调用方不得自动应用。
+        """
+        try:
+            dimension = Dimension(**request.dimension)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, f"invalid dimension: {exc}") from exc
+        payload = request.score
+        if "value" not in payload:
+            raise HTTPException(422, "score.value is required")
+        try:
+            score = DimensionScore(
+                task_id=request.attribution_id,
+                value=payload["value"],
+                source=str(payload.get("source") or "external"),
+                raw=payload.get("raw"),
+                reason=payload.get("reason"),
+                evidence_refs=list(payload.get("evidence_refs") or []),
+                lineage=dict(payload.get("lineage") or {}),
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, f"invalid score: {exc}") from exc
+        try:
+            attribution = attributor.attribute(
+                dimension=dimension, score=score, evidence=request.evidence
+            )
+        except InvalidJudgeOutput as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {
+            "attribution_id": request.attribution_id,
+            "dimension_id": dimension.id,
+            "attribution": attribution,
+        }
 
     @app.post("/tasks/{task_id}/score")
     def score_task(task_id: str, request: ScoreRequest):
